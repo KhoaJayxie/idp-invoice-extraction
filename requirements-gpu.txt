@@ -1,0 +1,25 @@
+# GPU OCR stack (Windows + NVIDIA RTX 50 / Blackwell sm_120, Python 3.12).
+#
+# Install order matters: the GPU wheel must go in FIRST so that paddleocr's
+# transitive deps never pull the CPU paddlepaddle build over it.
+#
+#   1) pip uninstall -y opencv-python-headless   # one cv2 provider only
+#   2) pip install -r requirements-gpu.txt
+#
+# The Paddle index hosts the CUDA 12.9 Windows wheels (driver >= 570).
+# CUDA 12.8+ is required for RTX 50 (sm_120); the cu129 build supports it.
+
+-r requirements.txt
+
+--index-url https://www.paddlepaddle.org.cn/packages/stable/cu129/
+
+paddlepaddle-gpu==3.4.0
+
+--extra-index-url https://pypi.org/simple
+
+paddleocr==3.7.0
+
+# VietOCR / torch are OPTIONAL (IDP_USE_VIETOCR=true). To enable GPU torch on
+# RTX 50 install the cu128 build from the PyTorch index instead:
+#   pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+# then pip install vietocr

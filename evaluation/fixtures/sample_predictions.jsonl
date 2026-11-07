@@ -1,0 +1,1 @@
+{"reference":{"text":"Cà phê 2 30.000 60.000 Tổng cộng 60.000","entities":{"SELLER":"Cửa hàng ABC","TOTAL_COST":60000,"INVOICE_ID":"HD-001"}},"prediction":{"text":"Cà phê 2 30.000 60.000 Tổng cộng 60.000","entities":{"SELLER":"Cửa hàng ABC","TOTAL_COST":"60.000","INVOICE_ID":"HD-001"}}}

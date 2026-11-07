@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f8">
+  <title>Invoice IDP · Hóa đơn thông minh</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Invoice IDP trang chủ">
+      <span class="brand-mark" aria-hidden="true">I</span>
+      <span><strong>INVOICE IDP</strong><small>Intelligent document processing</small></span>
+    </a>
+    <div class="top-actions">
+      <span class="api-status"><span class="status-dot" id="api-dot"></span><span id="api-label">Đang kết nối API…</span></span>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Chuyển giao diện sáng/tối" title="Chuyển giao diện sáng/tối">◐</button>
+      <a class="button button-quiet docs-link" href="/docs" target="_blank" rel="noreferrer">API docs ↗</a>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="page-heading">
+      <div><p class="eyebrow">WORKSPACE / REVIEW</p><h1>Kiểm duyệt hóa đơn</h1><p class="lede">Rút trích tự động, xác minh từng trường và lưu dữ liệu đã duyệt.</p></div>
+      <div class="heading-actions"><a class="button button-quiet" href="/api/export?format=csv">Xuất CSV</a><a class="button button-quiet" href="/api/export?format=xlsx">Xuất Excel</a></div>
+    </section>
+
+    <section class="dashboard" aria-labelledby="dashboard-title">
+      <div class="section-heading"><div><p class="eyebrow">OVERVIEW</p><h2 id="dashboard-title">Tổng quan chi tiêu</h2></div><span class="muted" id="dashboard-updated">—</span></div>
+      <div class="filter-row" aria-label="Bộ lọc thời gian cho toàn bộ tổng quan">
+        <label for="date-range">Khoảng thời gian</label>
+        <select id="date-range" name="date-range">
+          <option value="all">Toàn bộ thời gian</option>
+          <option value="today">Hôm nay</option>
+          <option value="7">7 ngày gần nhất</option>
+          <option value="30" selected>30 ngày gần nhất</option>
+          <option value="90">90 ngày gần nhất</option>
+          <option value="month">Tháng này</option>
+        </select>
+        <button class="button button-small" id="refresh-dashboard" type="button">Làm mới</button>
+      </div>
+      <div class="kpi-grid" id="kpi-grid" aria-live="polite">
+        <article class="kpi-card"><span>Tổng hóa đơn</span><strong id="kpi-count">—</strong><small>Trong khoảng đã chọn</small></article>
+        <article class="kpi-card kpi-primary"><span>Tổng chi tiêu</span><strong id="kpi-spend">—</strong><small>Đơn vị VND</small></article>
+        <article class="kpi-card"><span>Thuế đã ghi nhận</span><strong id="kpi-tax">—</strong><small>Đơn vị VND</small></article>
+        <article class="kpi-card"><span>Cần kiểm tra</span><strong id="kpi-review">—</strong><small id="kpi-validated">— hóa đơn hợp lệ</small></article>
+      </div>
+      <div class="dashboard-grid">
+        <article class="panel chart-panel">
+          <div class="panel-heading"><div><h3>Chi tiêu theo tháng</h3><p class="muted">Tổng tiền hóa đơn trong khoảng đã chọn</p></div></div>
+          <div id="monthly-chart" class="monthly-chart" role="img" aria-label="Biểu đồ chi tiêu theo tháng"></div>
+          <div class="table-wrap chart-table-wrap"><table class="data-table compact-table"><caption class="sr-only">Bảng chi tiêu theo tháng, dữ liệu đầy đủ của biểu đồ</caption><thead><tr><th scope="col">Tháng</th><th scope="col">Số hóa đơn</th><th scope="col">Tổng chi tiêu</th></tr></thead><tbody id="monthly-table"><tr><td colspan="3" class="empty-cell">Chưa có dữ liệu</td></tr></tbody></table></div>
+        </article>
+        <article class="panel seller-panel">
+          <div class="panel-heading"><div><h3>Nhà bán hàng</h3><p class="muted">Theo tổng chi tiêu</p></div></div>
+          <div id="seller-list" class="seller-list"><p class="empty-state">Chưa có hóa đơn đã lưu.</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="workspace" aria-labelledby="review-title">
+      <div class="section-heading workspace-title"><div><p class="eyebrow">HUMAN-IN-THE-LOOP</p><h2 id="review-title">Trích xuất &amp; hiệu chỉnh</h2></div><div class="status-pill status-neutral" id="review-status">Chưa có dữ liệu</div></div>
+      <div class="review-grid">
+        <section class="panel image-panel" aria-labelledby="image-title">
+          <div class="panel-heading image-heading"><div><h3 id="image-title">Ảnh hóa đơn</h3><p class="muted">Chọn vùng OCR để xem nội dung và độ tin cậy.</p></div><label class="button button-small upload-button" for="file-input">Chọn ảnh<input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff" hidden></label></div>
+          <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Chọn hoặc kéo thả ảnh hóa đơn">
+            <input id="drop-input" type="file" accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff" hidden>
+            <div class="empty-upload" id="empty-upload"><span class="upload-glyph" aria-hidden="true">↑</span><strong>Kéo ảnh hóa đơn vào đây</strong><span>hoặc nhấn để chọn · JPG, PNG, WEBP · tối đa 12 MB</span></div>
+            <div class="image-stage" id="image-stage" hidden><img id="receipt-image" alt="Ảnh hóa đơn đang được kiểm duyệt"><canvas id="box-canvas" aria-label="Lớp phủ các vùng OCR"></canvas><div class="image-tooltip" id="box-tooltip" role="status" hidden></div></div>
+          </div>
+          <div class="image-toolbar">
+            <div class="segmented" role="group" aria-label="Chọn ảnh xem trước"><button type="button" class="segment active" data-variant="original" aria-pressed="true">Ảnh gốc</button><button type="button" class="segment" data-variant="enhanced" aria-pressed="false">Tăng cường</button><button type="button" class="segment" data-variant="binary" aria-pressed="false">Nhị phân</button></div>
+            <button class="text-button" id="preview-button" type="button">Xem xử lý ảnh</button>
+          </div>
+          <details class="preprocess-settings"><summary>Tùy chọn xử lý ảnh</summary><div class="option-grid">
+            <label><input type="checkbox" name="auto_perspective" checked> Căn chỉnh phối cảnh</label>
+            <label><input type="checkbox" name="deskew" checked> Tự động deskew</label>
+            <label><input type="checkbox" name="illumination_correction" checked> Khử bóng / ánh sáng</label>
+            <label><input type="checkbox" name="denoise" checked> Khử nhiễu</label>
+            <label><input type="checkbox" name="clahe" checked> Tăng tương phản CLAHE</label>
+            <label><input type="checkbox" name="sharpen" checked> Làm sắc nét</label>
+            <label><input type="checkbox" name="binarize" checked> Tạo ảnh nhị phân</label>
+          </div></details>
+          <details class="sidecar-settings"><summary>Văn bản OCR demo (tùy chọn)</summary><p class="muted">Dùng khi chưa cài PaddleOCR: mỗi dòng là một dòng trên hóa đơn.</p><textarea id="ocr-text" rows="5" placeholder="CỬA HÀNG ABC&#10;Số hóa đơn: HD-001&#10;Cà phê 2 30.000 60.000&#10;Tổng cộng: 60.000"></textarea></details>
+          <div class="image-metrics" id="image-metrics" aria-live="polite"><span>Chưa có thông tin xử lý ảnh.</span></div>
+          <div class="ocr-list-wrap"><div class="panel-heading"><h3>Vùng OCR</h3><span class="muted" id="box-count">0 vùng</span></div><div id="ocr-list" class="ocr-list"><p class="empty-state">Các từ nhận diện sẽ hiện ở đây.</p></div></div>
+        </section>
+
+        <section class="panel form-panel" aria-labelledby="form-title">
+          <div class="panel-heading"><div><h3 id="form-title">Thông tin rút trích</h3><p class="muted">Các trường được phép chỉnh sửa trước khi lưu.</p></div><label class="mode-select">Pipeline<select id="pipeline-mode"><option value="heuristic">OCR + KIE</option><option value="vlm">VLM</option></select></label></div>
+          <span class="ocr-engine-chip" id="ocr-engine" title="Trạng thái engine OCR">OCR: đang kiểm tra…</span>
+          <div class="confidence-row"><span>Độ tin cậy tổng thể</span><div class="confidence-track"><span id="confidence-bar"></span></div><strong id="confidence-value">—</strong></div>
+          <form id="invoice-form">
+            <div class="form-section"><h4>Thông tin chung</h4>
+              <div class="form-grid">
+                <label class="field"><span>Đơn vị bán</span><input id="seller" name="seller" maxlength="255" autocomplete="organization" placeholder="Tên cửa hàng / công ty"></label>
+                <label class="field"><span>Mã hóa đơn</span><input id="invoice_id" name="invoice_id" maxlength="128" placeholder="VD: HD-001"></label>
+                <label class="field field-wide"><span>Địa chỉ</span><input id="address" name="address" maxlength="1000" autocomplete="street-address" placeholder="Địa chỉ người bán"></label>
+                <label class="field"><span>Ngày giờ</span><input id="timestamp" name="timestamp" type="datetime-local"></label>
+                <label class="field"><span>Trạng thái duyệt</span><select id="status" name="status"><option value="NEEDS_REVIEW">Cần kiểm tra</option><option value="VALIDATED">Đã xác nhận</option></select></label>
+              </div>
+            </div>
+            <div class="form-section"><div class="section-inline"><h4>Dòng hàng hóa</h4><button class="text-button" id="add-item" type="button">+ Thêm dòng</button></div>
+              <div class="table-wrap items-wrap"><table class="data-table items-table"><thead><tr><th scope="col">Tên hàng</th><th scope="col">SL</th><th scope="col">Đơn giá</th><th scope="col">Thành tiền</th><th scope="col"><span class="sr-only">Xóa</span></th></tr></thead><tbody id="items-body"></tbody></table></div>
+              <p class="empty-inline" id="items-empty">Chưa có dòng hàng hóa. Có thể thêm thủ công.</p>
+            </div>
+            <div class="form-section"><h4>Tổng kết</h4><div class="form-grid totals-grid">
+              <label class="field"><span>Tạm tính</span><input id="subtotal" name="subtotal" type="number" step="any" inputmode="decimal"></label>
+              <label class="field"><span>Thuế</span><input id="tax" name="tax" type="number" step="any" inputmode="decimal"></label>
+              <label class="field"><span>Giảm giá</span><input id="discount" name="discount" type="number" step="any" inputmode="decimal"></label>
+              <label class="field total-field"><span>Tổng thanh toán</span><input id="total_cost" name="total_cost" type="number" step="any" inputmode="decimal"></label>
+            </div><div id="math-check" class="math-check" aria-live="polite">Nhập hóa đơn để kiểm tra tổng.</div></div>
+            <div class="form-actions"><button class="button button-primary" id="save-button" type="submit">Lưu hóa đơn</button><button class="button button-quiet" id="reset-button" type="button">Làm mới biểu mẫu</button></div>
+          </form>
+          <div class="result-notices"><div id="warnings" class="warning-list" aria-live="polite"></div></div>
+          <details class="history-details"><summary>Hóa đơn đã lưu <span class="muted" id="history-count"></span></summary><div id="history-list" class="history-list"><p class="empty-state">Chưa tải danh sách.</p></div></details>
+        </section>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <footer class="footer"><span>Vietnamese Invoice IDP</span><span>Preprocess · OCR/KIE · Human review</span></footer>
+</body>
+</html>

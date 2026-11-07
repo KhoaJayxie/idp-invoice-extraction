@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and generated runtime data
+.env
+*.db
+*.sqlite3
+data/uploads/*
+data/processed/*
+!data/uploads/.gitkeep
+!data/processed/.gitkeep
+# Demo invoices referenced by evaluation/fixtures/invoice_ground_truth.jsonl
+!data/uploads/7e1b36af656041d7a50e1143e54c29b4_1131w-I0bkvSytJQE.webp
+!data/uploads/8b6836b4f54e499db3762925118c22dc_1131w-I0bkvSytJQE.webp
+
+# Generated evaluation artifacts (regenerate with scripts/)
+evaluation/benchmarks/
+evaluation/predictions/
+
+# Optional model weights
+models/*
+!models/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
