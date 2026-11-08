@@ -28,7 +28,12 @@ class LineItem(BaseModel):
 class InvoiceData(BaseModel):
     invoice_id: str | None = None
     seller: str | None = None
+    buyer: str | None = None
     address: str | None = None
+    buyer_address: str | None = None
+    tax_id: str | None = None
+    buyer_tax_id: str | None = None
+    currency: str | None = None
     timestamp: datetime | None = None
     subtotal: float = 0.0
     tax: float = 0.0
@@ -54,7 +59,12 @@ class InvoiceCreate(InvoiceData):
 class InvoiceUpdate(BaseModel):
     invoice_id: str | None = None
     seller: str | None = None
+    buyer: str | None = None
     address: str | None = None
+    buyer_address: str | None = None
+    tax_id: str | None = None
+    buyer_tax_id: str | None = None
+    currency: str | None = None
     timestamp: datetime | None = None
     subtotal: float | None = None
     tax: float | None = None
@@ -152,6 +162,11 @@ class ExtractionResponse(BaseModel):
     binary_image_url: str | None = None
     timings: dict[str, float] = Field(default_factory=dict)
     engine: dict[str, Any] | None = None
+    # Per-field KIE breakdown: {field: {value, kie_conf, ocr_conf, method,
+    # box_ids}} — kie_conf combines the underlying OCR confidence with how
+    # strong the structural evidence was (label match, spatial fallback...),
+    # deliberately separate from the raw OCR confidence above.
+    field_details: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class PreviewResponse(BaseModel):

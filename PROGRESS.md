@@ -1,13 +1,63 @@
 # PROGRESS — Vietnamese Invoice IDP V2
 
-> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **07/11/2026**.
+> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **08/11/2026**.
 > Mục đích: lần sau mở lại dự án là nắm ngay được đã làm gì, sửa ở đâu, số liệu ra sao và việc gì còn lại.
+
+## 0. Cập nhật 08/11/2026 — Spatial KIE viết lại hoàn toàn (mục chính của đợt này)
+
+**Kết quả headline: entity accuracy trên bộ fixture OCR thật tăng từ 48.2% (27/56 trường) → 100% (56/56). 41/41 test pass (17 test KIE mới).**
+
+### `backend/app/idp_engine/kie_extractor.py` — viết lại từ regex-line sang spatial KIE
+- **Nhóm tokens thành dòng theo hình học** (`_build_lines`): y-overlap ≥45% gộp dòng; **tách segment theo khoảng trống x** (≥ max(0.13×page_width, 110px)) → hóa đơn 2 cột (buyer/bank, phone/account) không còn lẫn nhau.
+- **Bảng hàng hóa theo cột** (`_detect_table`/`_parse_items`): header suy ra x-range từng cột (desc/qty/price/amount/disc) từ keyword; gán số cho cột; **toán học phân biệt** qty×price≈amount (tolerance max(0.05, 2%)); đơn giá wrap dòng dưới được gập lại (`merged` block numeric-only); còn thiếu cột qty (`SÓ GIÒ` hỏng) → số nguyên 1-3 chữ số đứng cuối mô tả được hiểu là SL. Item-code ≥1e8 (barcode/phone) bị chặn.
+- **Trường bên (Seller/Buyer/Address/Tax ID/Invoice ID/Date/Currency)**: label mờ hữu hạn (rapidfuzz cửa sổ 1-4 từ, ≥80, diff độ dài ≤1 nếu ngắn) + 3 phương thức (inline/right/below theo x-overlap ≥0.35); nhãn kề bên là label khác thì bị **từ chối làm value** (`_classify_line` guard — sửa lỗi buyer='THANH TOÁN CHO'); run address neo theo **segment chứa value** (không phải segment rộng nhất) + **chặn ở header bảng** + lọc theo cột của party → address 2 cột sạch.
+- **Seller**: label → header inference (business hints + caps + ngoặc, dòng đầu tiên mạnh thắng; giữ dòng tiếp không chứa số).
+- **Money field**: loại dòng subtotal/tax/discount lẫn nhau (`exclude_labels`), loại tiền mặt/thối/changes (`_MONEY_LINE_EXCLUDE`), **ưu tiên modifier Grand/Rounded**, chặn tại "GST summary"; subtotal suy ra từ tổng dòng hàng khi thiếu. Tiền tệ biết theo dòng (RM/USD dot-decimal vs VND dot-thousands); match dấu AM/PM; ngày dài VN.
+- **Timestamp 2 nút thắt đã sửa**: `_value_after_label` cắt ở dấu `:` đầu tiên (lấy nhầm `08:32:00`); nay tái dựng từ cả segment và gộp `Time:` khi không thấy ngày; gom thời gian từ segment kề/line kề. Thịt lỗi nữa: dòng `Date...` bị coi là **summary-start** vì 'cash' trong 'Cashier' — đã bỏ 'cashier' khỏi `_DATE_LINE`; `_first_summary_line` **bỏ qua dòng nhãn tax-id mà token trùng `_TAXID_VALUE`** (`GST No: 789417-W`, `MST: 031...`) nhưng giữ dòng tiền thật (`Thuế VAT: 8.500`).
+- **Per-field confidence tách bạch**: `kie_conf = ocr_conf × method weight` (inline 1.0, right 0.95, below 0.85, computed 0.8, pattern_scan 0.7, business/address inference 0.45–0.55). Không đủ bằng chứng → `None` (không bịa). `field_details` kèm `value/ocr_conf/kie_conf/method/box_ids` cho mọi trường + items.
+- `extract(tokens)` giữ wrapper 3-tuple; `extract_with_details` trả 4-tuple (data, boxes, raw_text, field_details).
+- **Cho phép label chung**: Document No / Receipt No / Invoice No / Cash Bill No; nhãn EN+VN cho mọi trường.
+- **Regression demo của user (ảnh thật)**: BOOK TA — trước seller='tan woon yann', id=None, items=0 → nay đủ 11 trường + 1 item; ZHENG HUI — trước seller='h02038', tax=0, items=0, total thiếu GST → nay đủ: seller/buyer/tax 000800689824/id CS00082258/address/timestamp **2018-02-09 08:32:00**/subtotal 411.5/tax 24.69/total 436.20 + **6 items**.
+
+### Subway khác
+- `postprocessor.py` — `currency_hint()` (VND/MYR/USD/EUR/GBP/SGD), `normalize_money(value, decimal_dot)` ép đọc dot theo tiền tệ; gập AM/PM 12h trong `normalize_datetime`; `validate_invoice` thêm `rounding_gap` (+0.01 RM) đề phòng Rounding Adjustment — giữ tolerance toán.
+- `schemas/invoice.py` — thêm `buyer`, `buyer_address`, `tax_id`, `buyer_tax_id`, `currency` vào InvoiceData/InvoiceUpdate; `field_details` vào ExtractionResponse.
+- `models/invoice.py` + `database.py` — migration 5 cột mới (nullable, additive).
+- `api/routes.py` — `_to_out` map 5 trường mới.
+- `pipeline.py` — gọi `extract_with_details`, trả `field_details`, normalize 5 trường mới. (OCR/FE/API behavior giữ nguyên.)
+- **Frontend**: 5 input mới (MST người bán, khách hàng, địa chỉ/MST khách, tiền tệ) ở form Thông tin chung; `fillForm` + `saveInvoice` đã map.
+- `scripts/evaluate_pipeline.py` — ENTITY_KEYS mở rộng thêm BUYER, BUYER_ADDRESS, TAX_ID, BUYER_TAX_ID, CURRENCY.
+- **Mới**: `scripts/compare_kie.py` (so trước/sau), `evaluation/fixtures/kie_ground_truth.json` (GT chép tay cho 4 fixture), `evaluation/fixtures/after_kie_results.json`, `backend/tests/test_kie_extractor.py` (17 test: grouping/segment 2 cột, table columns + multi-line + wrapped price, desc-qty fallback, tax-id patterns, AM/PM, same-seg time fold, RM-vs-VND, Total-vs-GST, null-when-insufficient, field_details shape, regression 3 ảnh demo bằng tokens OCR thật).
+
+### Bảng so trước/sau (4 fixture × 14 trường = 56 điểm mô tả trường)
+| Field | bookta | zhenghui | vn_bookstore_1/2 |
+|---|---|---|---|
+| seller | ❌→✅ | ❌→✅ | ❌→✅ |
+| buyer | ✅ | ❌→✅ | ❌→✅ |
+| address | ❌→✅ | ❌→✅ | ✅ |
+| buyer_address | ✅ | ✅ | ❌→✅ |
+| tax_id | ❌→✅ | ❌→✅ | ✅ (null đúng) |
+| invoice_id | ❌→✅ | ❌→✅ | ❌→✅ |
+| currency | ❌→✅ | ❌→✅ | ❌→✅ |
+| subtotal | ❌→✅ (computed) | ✅ | ✅ |
+| tax | ✅ (0) | ❌→✅ 24.69 | ✅ |
+| total_cost | ✅ | ❌→✅ 436.20 | ✅ |
+| timestamp | ✅ | ❌→✅ 08:32:00 | ✅ |
+| items | ❌→✅ (1) | ❌→✅ (6) | ❌→✅ (3) |
+
+- **BEFORE 48.2% (27/56) → AFTER 100% (56/56)**. Script tái lập: `python scripts/compare_kie.py`.
+
+### Hạn chế còn lại của KIE (trung thực để báo cáo)
+1. Tên hàng VN vẫn mang **dấu hỏng do OCR** ("Tiu thuyt", "Đưng ABC") — đã dùng GT theo chữ in trên hóa đơn; độ chính xác 100% này là **KIE-level** (bind label→value đúng), không phải OCR-level (dấu/WRF theo evaluation/fixtures/invoice_ground_truth.jsonl vẫn CER 0.346).
+2. Bundle 2 cột dạng bank/phone đã tách tốt bằng segment, nhưng header 2 cột cực ngắn (gap <110px) vẫn có thể gộp sai — không thường gặp với kích thước ảnh hiện tại.
+3. GT hiện chỉ có **4 hóa đơn VN/EN** (2 ảnh demo SROIE + 1 hóa đơn sách VN). Số 100% chưa có giá trị thống kê rộng — cần bổ sung tập ảnh hóa đơn thật như đã dòng sẵn ở mục 6.
+4. Bookta subtotal = **computed** (từ dòng hàng), vì hóa đơn chỉ in `TOTAL 9.00` — đúng vai trò của validation bên postprocessor khi đã có dòng hàng.
 
 ---
 
 ## 1. Trạng thái hiện tại (tóm tắt một câu)
 
-Hệ thống chạy được **OCR thật bằng PaddleOCR trên GPU** (RTX 5060 Laptop 8GB, CUDA 12.9, PP-OCRv6 medium, tiếng Việt + tiếng Anh), end-to-end extract → KIE → validation → lưu DB hoạt động, **24/24 test pass**, UI đã sửa đủ 4 lỗi ưu tiên (bbox sai vị trí, UI overflow, ảnh quá nhỏ, lỗi API/data).
+Hệ thống chạy được **OCR thật bằng PaddleOCR trên GPU** (RTX 5060 Laptop 8GB, CUDA 12.9, PP-OCRv6 medium, tiếng Việt + tiếng Anh), end-to-end extract → KIE → validation → lưu DB hoạt động, **41/41 test pass**, UI đã sửa đủ 4 lỗi ưu tiên (bbox sai vị trí, UI overflow, ảnh quá nhỏ, lỗi API/data), **KIE spatial 100% entity accuracy trên 4 fixture OCR thật**.
 
 ## 2. Môi trường đã xác minh
 
@@ -96,7 +146,7 @@ Chuỗi kiểm tra môi trường: `python scripts\check_gpu_env.py` → tất c
 
 1. **Dấu tiếng Việt**: PP-OCRv6 medium đọc tốt phần lớn chữ nhưng vẫn lỗi dấu trên font đậm/nghệ thuật và font nhỏ (giữ nguyên âm đôi khi sai "Ấ"→"Ã", nhỏ thường mất dấu hẳn). KIE đã chống chịu bằng fuzzy matching; muốn chất lượng text cao hơn có thể thử `IDP_PADDLE_MODEL_SIZE` lớn hơn khi có model lớn hơn, hoặc fine-tune (notebook có skeleton).
 2. **Hóa đơn chụp lệch/cong**: hóa đơn mẫu là scan phẳng. Preprocessing có perspective/deskew nhưng chưa test rộng trên ảnh chụp nghiêng thật — nên bổ sung tập ảnh chụp điện thoại khi làm demo.
-3. **2 cột trái/phải trên hóa đơn bị gộp thành 1 dòng** khi cùng y (KIE baseline), ví dụ "Số điện thoại" + "Tên tài khoản" chung dòng — không ảnh hưởng các trường tiền, nhưng address/seller có thể lẫn nhiễu.
+3. ~~**2 cột trái/phải trên hóa đơn bị gộp thành 1 dòng**~~ — **đã xử lý 08/11**: segment tách theo khoảng trống x (≥110px) + address run neo theo cột của party; chỉ còn rủi ro khi 2 cột cách nhau <110px (hiếm ở độ phân giải demo).
 4. **VietOCR/torch chưa cài** (tùy chọn, tốn ~2.5GB); hướng dẫn trong `requirements-gpu.txt` nếu muốn bật.
 
 ## 6. Việc tiếp theo gợi ý (làm tiếp khi mở dự án)

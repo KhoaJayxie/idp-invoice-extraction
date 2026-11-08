@@ -9,6 +9,37 @@ from typing import Any
 from ..schemas.invoice import InvoiceData, MathCheck
 
 
+# Currency markers by script family. Dot-decimal currencies ("RM", "$", "USD")
+# read "9.000" as nine units; Vietnamese dong reads "9.000" as nine thousand.
+DOT_DECIMAL_CURRENCIES = ("rm", "usd", "sgd", "us$", "$", "€", "£")
+DOT_THOUSAND_CURRENCIES = ("vnd", "vnđ", "₫", "đ")
+
+
+def currency_hint(text: str) -> str | None:
+    """Return a currency code detected in `text` ('VND', 'MYR', 'USD', ...).
+
+    Only markers adjacent to digits/word boundaries count: 'đ' inside a
+    Vietnamese word ('Đường') is a letter, not a dong symbol.
+    """
+    folded = unicodedata.normalize("NFKC", str(text or "")).casefold()
+    if "₫" in folded or re.search(r"\d\s*đ(?![a-zà-ỹ])", folded) or re.search(r"(?<![a-zà-ỹ])đ\s*\d", folded) or re.search(r"(?<![a-z0-9])vnd(?![a-z0-9])", folded):
+        return "VND"
+    if re.search(r"(?<![a-z])(?:rm|myr)(?![a-z])", folded):
+        return "MYR"
+    if "$" in folded or re.search(r"(?<![a-z0-9])usd(?![a-z0-9])", folded):
+        return "USD"
+    if "€" in folded:
+        return "EUR"
+    if "£" in folded:
+        return "GBP"
+    if re.search(r"(?<![a-z0-9])sgd(?![a-z0-9])", folded):
+        return "SGD"
+    return None
+
+
+CURRENCY_CODES = {"rm": "MYR", "$": "USD", "usd": "USD", "€": "EUR", "£": "GBP", "sgd": "SGD", "us$": "USD"}
+
+
 @dataclass(slots=True)
 class ValidationResult:
     status: str
@@ -23,12 +54,14 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def normalize_money(value: Any) -> float:
+def normalize_money(value: Any, decimal_dot: bool | None = None) -> float:
     """Parse Vietnamese/international money strings into a numeric amount.
 
     Vietnamese receipts commonly use dot as a thousands separator (93.500),
-    while international/decimal forms may use both comma and dot (1,234.56 or
-    1.234,56). OCR O/o mistakes in numeric-looking values are corrected.
+    while dot-decimal currencies (RM, USD) use dot as the decimal mark
+    ("9.000" = nine). OCR O/o mistakes in numeric-looking values are
+    corrected. `decimal_dot` forces one reading when the caller knows the
+    currency context; None applies mixed heuristics.
     """
     if value is None or isinstance(value, bool):
         return 0.0
@@ -62,7 +95,10 @@ def normalize_money(value: Any) -> float:
         parts = raw.split(".")
         if len(parts) > 2:
             raw = "".join(parts[:-1]) + ("." + parts[-1] if len(parts[-1]) in (1, 2) else parts[-1])
-        elif len(parts[-1]) == 3:
+        elif decimal_dot is True:
+            pass  # dot-decimal currency: "9.000" RM stays nine
+        elif decimal_dot is False or len(parts[-1]) == 3:
+            # Vietnamese thousands reading wins when forced or ambiguous.
             raw = "".join(parts)
     try:
         amount = float(raw)
@@ -78,6 +114,14 @@ def normalize_datetime(value: str | datetime | None) -> datetime | None:
     if not text:
         return None
     text = text.replace("T", " ").replace("年", "-").replace("月", "-").replace("日", " ")
+    # 12-hour clocks: "8:13:39 PM", "08:32 AM" — fold into 24-hour first so
+    # every downstream pattern stays uniform.
+    meridiem = re.search(r"\b(\d{1,2})[:h](\d{2})(?::(\d{2}))?\s*([AP])\.?\s*M?\b", text, flags=re.IGNORECASE)
+    if meridiem:
+        hour, minute, second, ampm = meridiem.groups()
+        hour = int(hour) % 12 + (12 if ampm.upper() == "P" else 0)
+        replacement = f"{hour:02d}:{minute}" + (f":{second}" if second else "")
+        text = text[: meridiem.start()] + replacement + text[meridiem.end() :]
     candidates = (
         "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H%M",
         "%Y-%m-%d", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M",
@@ -146,7 +190,11 @@ def validate_invoice(
             f"Tạm tính ghi trên hóa đơn ({data.subtotal:.0f}) lệch với tổng dòng hàng ({items_sum:.0f}); dùng tổng dòng hàng."
         )
     expected = round(subtotal + data.tax - data.discount, 2)
-    tolerance = max(1.0, abs(data.total_cost) * tolerance_ratio)
+    # Cash rounding ("Rounding (RM): 0.01", "Rounding Adjustment: 0.00") moves
+    # the printed total away from the exact arithmetic sum; accept a small
+    # rounding gap on top of the percentage tolerance.
+    rounding_gap = min(abs(float(data.total_cost)), 0.05) if data.currency and data.currency != "VND" else 0.0
+    tolerance = max(1.0, abs(data.total_cost) * tolerance_ratio) + rounding_gap
     passed = data.total_cost > 0 and abs(expected - data.total_cost) <= tolerance
     failed_check = data.total_cost > 0 and (data.items or data.subtotal > 0) and not passed
     if failed_check:

@@ -37,6 +37,11 @@ def initialize_database() -> None:
             "aligned_image_url": "VARCHAR(512)",
             "processed_image_url": "VARCHAR(512)",
             "binary_image_url": "VARCHAR(512)",
+            "buyer": "VARCHAR(255)",
+            "buyer_address": "TEXT",
+            "tax_id": "VARCHAR(64)",
+            "buyer_tax_id": "VARCHAR(64)",
+            "currency": "VARCHAR(8)",
         },
     }
     inspector = inspect(engine)

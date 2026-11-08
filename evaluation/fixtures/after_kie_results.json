@@ -1,0 +1,148 @@
+{
+ "sroie_bookta": {
+  "seller": "BOOK TA K (TAMAN DAYA) SDN BHD",
+  "buyer": null,
+  "address": "NO.5: 55,57 & 59, JALAN SAGU 18, TAMAN DAYA, 81100 JOHOR BAHRU",
+  "buyer_address": null,
+  "tax_id": "789417-W",
+  "buyer_tax_id": null,
+  "invoice_id": "TD01167104",
+  "currency": "MYR",
+  "subtotal": 9.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 9.0,
+  "timestamp": "2018-12-25T20:13:39",
+  "items": [
+   {
+    "name": "KF MODELLING CLAY KIDDY FISH",
+    "quantity": 1.0,
+    "unit_price": 9.0,
+    "amount": 9.0
+   }
+  ]
+ },
+ "sroie_zhenghui": {
+  "seller": "PERNIAGAAN ZHENG HUI",
+  "buyer": "GOGIANT ENGINEERING (M) SDN BHD",
+  "address": "NO.59 JALAN PERMAS 9/5, BANDAR BARU PERMAS JAYA, 81750 JOHOR BAHRU",
+  "buyer_address": null,
+  "tax_id": "000800689824",
+  "buyer_tax_id": null,
+  "invoice_id": "CS00082258",
+  "currency": "MYR",
+  "subtotal": 411.5,
+  "tax": 24.69,
+  "discount": 0.0,
+  "total_cost": 436.2,
+  "timestamp": "2018-02-09T08:32:00",
+  "items": [
+   {
+    "name": "SR CERAMIC CAP",
+    "quantity": 5.0,
+    "unit_price": 3.5,
+    "amount": 17.5
+   },
+   {
+    "name": "SR: S/STEEL 1/2\" STREET EL.BOW",
+    "quantity": 30.0,
+    "unit_price": 3.8,
+    "amount": 114.0
+   },
+   {
+    "name": "SR: 2.4MM STARWELD RED HEAD TUNGSTEN ROD",
+    "quantity": 1.0,
+    "unit_price": 55.0,
+    "amount": 55.0
+   },
+   {
+    "name": "SR: ESICUT 4° CUTTING DISC (1BOX)-50PCS",
+    "quantity": 3.0,
+    "unit_price": 33.0,
+    "amount": 99.0
+   },
+   {
+    "name": "SR: WELDRO PICKLING GEL 1KG",
+    "quantity": 2.0,
+    "unit_price": 43.0,
+    "amount": 86.0
+   },
+   {
+    "name": "SR: 13.5\" WELDING GLOVE - GREEN (GS)",
+    "quantity": 4.0,
+    "unit_price": 10.0,
+    "amount": 40.0
+   }
+  ]
+ },
+ "vn_bookstore_1": {
+  "seller": "NHÀ XUÃT BÁN HUYÊN THOAI",
+  "buyer": "Công ty An Phú",
+  "address": null,
+  "buyer_address": "123 Đưng ABC, Thành ph DEF",
+  "tax_id": null,
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "currency": "VND",
+  "subtotal": 12000000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 12000000.0,
+  "timestamp": "2025-06-16T00:00:00",
+  "items": [
+   {
+    "name": "Tip cn (Tiu thuyt)",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   },
+   {
+    "name": "(Tiu thuyt tranh nh) Chic áo màu đen",
+    "quantity": 2.0,
+    "unit_price": 3000000.0,
+    "amount": 6000000.0
+   },
+   {
+    "name": "Ngưi thy (Tiu s",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   }
+  ]
+ },
+ "vn_bookstore_2": {
+  "seller": "NHÀ XUÃT BÁN HUYÊN THOAI",
+  "buyer": "Công ty An Phú",
+  "address": null,
+  "buyer_address": "123 Đưng ABC, Thành ph DEF",
+  "tax_id": null,
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "currency": "VND",
+  "subtotal": 12000000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 12000000.0,
+  "timestamp": "2025-06-16T00:00:00",
+  "items": [
+   {
+    "name": "Tip cn (Tiu thuyt)",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   },
+   {
+    "name": "(Tiu thuyt tranh nh) Chic áo màu đen",
+    "quantity": 2.0,
+    "unit_price": 3000000.0,
+    "amount": 6000000.0
+   },
+   {
+    "name": "Ngưi thy (Tiu s",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   }
+  ]
+ }
+}

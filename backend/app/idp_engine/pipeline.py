@@ -85,7 +85,7 @@ class HeuristicPipeline(IDPPipeline):
         tokens = self.detector.detect(processed, source_path=image_path)
         timings["ocr_ms"] = round((time.perf_counter() - step) * 1000, 1)
         step = time.perf_counter()
-        data, raw_boxes, raw_text = self.kie.extract(tokens)
+        data, raw_boxes, raw_text, field_details = self.kie.extract_with_details(tokens)
         timings["kie_ms"] = round((time.perf_counter() - step) * 1000, 1)
         # Overall confidence is the mean token confidence: a single degraded
         # token (one misread character) should not sink an otherwise clean
@@ -122,6 +122,7 @@ class HeuristicPipeline(IDPPipeline):
             binary_image_url=f"/processed/{artifact['binary']}",
             timings=timings,
             engine=self.detector.status(),
+            field_details=field_details,
         )
 
     def _write_artifacts(self, processed: PreprocessResult, stem: str) -> dict[str, str]:
@@ -207,7 +208,7 @@ class VLMPipeline(IDPPipeline):
 
 def _normalize_invoice(data: InvoiceData) -> InvoiceData:
     payload = data.model_dump()
-    for key in ("seller", "address", "invoice_id"):
+    for key in ("seller", "address", "invoice_id", "buyer", "buyer_address", "tax_id", "buyer_tax_id", "currency"):
         if payload.get(key):
             payload[key] = normalize_text(str(payload[key]))
     payload["timestamp"] = normalize_datetime(payload.get("timestamp"))

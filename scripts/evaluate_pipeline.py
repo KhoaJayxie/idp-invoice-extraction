@@ -36,7 +36,12 @@ from evaluation.evaluate_metrics import canonical_entity, evaluate  # noqa: E402
 ENTITY_KEYS = {
     "SELLER": "seller",
     "ADDRESS": "address",
+    "BUYER": "buyer",
+    "BUYER_ADDRESS": "buyer_address",
     "INVOICE_ID": "invoice_id",
+    "TAX_ID": "tax_id",
+    "BUYER_TAX_ID": "buyer_tax_id",
+    "CURRENCY": "currency",
     "TIMESTAMP": "timestamp",
     "SUBTOTAL": "subtotal",
     "TAX": "tax",

@@ -1,0 +1,92 @@
+{
+ "sroie_bookta": {
+  "seller": "tan woon yann",
+  "buyer": null,
+  "tax_id": null,
+  "invoice_id": null,
+  "timestamp": "2018-12-25T20:13:39",
+  "subtotal": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 9.0,
+  "currency": null,
+  "items": []
+ },
+ "sroie_zhenghui": {
+  "seller": "h02038",
+  "buyer": null,
+  "tax_id": null,
+  "invoice_id": null,
+  "timestamp": "2018-02-09T00:00:00",
+  "subtotal": 411.5,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 411.5,
+  "currency": null,
+  "items": []
+ },
+ "vn_bookstore_1": {
+  "seller": "HUYÊN THOAI",
+  "buyer": null,
+  "tax_id": null,
+  "invoice_id": "THANH",
+  "timestamp": "2025-06-16T00:00:00",
+  "subtotal": 12000000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 12000000.0,
+  "currency": null,
+  "items": [
+   {
+    "name": "Tip cn (Tiu thuyt)",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   },
+   {
+    "name": "Chic áo màu đen",
+    "quantity": 2.0,
+    "unit_price": 3000000.0,
+    "amount": 6000000.0
+   },
+   {
+    "name": "Ngưi thy (Tiu s",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   }
+  ]
+ },
+ "vn_bookstore_2": {
+  "seller": "HUYÊN THOAI",
+  "buyer": null,
+  "tax_id": null,
+  "invoice_id": "THANH",
+  "timestamp": "2025-06-16T00:00:00",
+  "subtotal": 12000000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 12000000.0,
+  "currency": null,
+  "items": [
+   {
+    "name": "Tip cn (Tiu thuyt)",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   },
+   {
+    "name": "Chic áo màu đen",
+    "quantity": 2.0,
+    "unit_price": 3000000.0,
+    "amount": 6000000.0
+   },
+   {
+    "name": "Ngưi thy (Tiu s",
+    "quantity": 1.0,
+    "unit_price": 3000000.0,
+    "amount": 3000000.0
+   }
+  ]
+ }
+}

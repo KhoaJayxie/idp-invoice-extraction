@@ -395,7 +395,7 @@
   }
 
   function fillForm(invoice, status) {
-    ["seller", "invoice_id", "address", "subtotal", "tax", "discount", "total_cost"].forEach((key) => {
+    ["seller", "invoice_id", "address", "tax_id", "buyer", "buyer_address", "buyer_tax_id", "currency", "subtotal", "tax", "discount", "total_cost"].forEach((key) => {
       $(key).value = invoice[key] === null || invoice[key] === undefined ? "" : invoice[key];
     });
     $("timestamp").value = invoice.timestamp ? String(invoice.timestamp).slice(0, 16) : "";
@@ -455,6 +455,11 @@
       invoice_id: $("invoice_id").value.trim() || null,
       seller: $("seller").value.trim() || null,
       address: $("address").value.trim() || null,
+      tax_id: $("tax_id").value.trim() || null,
+      buyer: $("buyer").value.trim() || null,
+      buyer_address: $("buyer_address").value.trim() || null,
+      buyer_tax_id: $("buyer_tax_id").value.trim() || null,
+      currency: $("currency").value.trim() || null,
       timestamp: $("timestamp").value || null,
       subtotal: Number($("subtotal").value || 0), tax: Number($("tax").value || 0), discount: Number($("discount").value || 0), total_cost: Number($("total_cost").value || 0),
       items: state.items.map((item) => ({ name: String(item.name || ""), quantity: Number(item.quantity || 0), unit_price: Number(item.unit_price || 0), amount: Number(item.amount || 0), confidence: Number(item.confidence || 0), bbox: item.bbox || null })),
