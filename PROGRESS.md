@@ -1,9 +1,48 @@
 # PROGRESS — Vietnamese Invoice IDP V2
 
-> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **08/11/2026**.
+> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **10/11/2026**.
 > Mục đích: lần sau mở lại dự án là nắm ngay được đã làm gì, sửa ở đâu, số liệu ra sao và việc gì còn lại.
 
-## 0. Cập nhật 08/11/2026 — Spatial KIE viết lại hoàn toàn (mục chính của đợt này)
+## 0b. Cập nhật 10/11/2026 — P3 refinement: VAT invoices + restaurant receipts (mục chính của đợt này)
+
+**Yêu cầu**: tinh chỉnh P3 trên 2 loại hóa đơn thật (hóa đơn VAT + bill nhà hàng), KHÔNG lên P4/VLM. Kết quả: **entity accuracy 58.0% → 89.8% (158/176)** trên 11 fixture OCR thật × 16 trường, 41/41 test pass.
+
+### Dữ liệu thật mới (7 ảnh từ thư mục uploads, chạy PaddleOCR GPU thật)
+- `scripts/dump_ocr_tokens.py` (mới) — dump tokens OCR thật ra `evaluation/fixtures/ocr_tokens/<name>.json` (kèm processed_width/height). Chạy 1 lần, test/so sánh replay lại — không mock.
+- 7 fixture mới: `vat_convert_abc` (VAT 2017 dạng chuyển đổi), `vat_blurred` (VAT mờ/nhòe), `vat_efy_template` (VAT mẫu EFY, bảng rỗng + block Tổng hợp), `vn_resto_comnieu` (bill nhà hàng CƠM NIÊU — bảng không viền, 2 dòng/món), `vn_resto_gaigarden` (GAI GARDEN — STT/SL/đơn giá/thành tiền), `my_crosschannel` + `my_lightroom` (Malaysia tax invoice không viền, `@ price`, GST).
+- GT mở rộng: `evaluation/fixtures/kie_ground_truth.json` giờ có 10 hóa đơn.
+
+### Các sửa chính trong `kie_extractor.py`
+- **STT vs SL**: cột STT được nhận diện (`_TABLE_ROLES["stt"]`); số đứng TRƯỚC tên hàng = số thứ tự (bỏ), số đứng SAU tên hàng = số lượng (dùng). Vô hiệu hóa nhầm STT→qty trên GAI GARDEN.
+- **Kháng nhiễu tên hàng dính số**: "1 850,000 850,000" dính 1 box → `_cell_numbers` tách 3 số; triple (q,p,a) khớp qty×price≈amount được tìm TRONG các cột số gộp (`_resolve_row_numbers` quét cả price+amount columns) → SL/đơn giá/thành tiền đúng từng món.
+- **Không hardcode tọa độ**: mọi quy tắc là hình học/keyword chung (cột theo header, toán học phân biệt dòng, bar-code ≥1e8 chặn).
+- **Hàng tiêu đề/hàng gợi ý không còn thành sản phẩm**: `_is_hint_row` (dòng "1 2 3 4 5 6=4×5", "A B C D"), `_line_is_role_text` (dòng "(No.) (Description)"), nhận diện STT column qua bigram header ("Tên món" + "SLDon giá"), chặn item khi ô desc chỉ chứa số-thuần và không có chữ cái nào (`Tổng số lượng: 5`, `Công tiền hàng` không còn thành item).
+- **Không gộp tên 2 món liền kề**: block mới phải có số hoặc dài hơn ngưỡng; tên 1 dòng + số dòng dưới → tách khối riêng (CƠM NIÊU: 4 món thay vì 3 món dính tên).
+- **Seller/Buyer VAT**: `_seller_name_from_line` lọc label-line (Tổng tiền:, Mã số thuế:, Tên đơn vị (Company's name):) + header-role vocab + tiêu đề hóa đơn; `_seller_from_footer` cho bill nhà hàng (tên shop dưới cùng); `_SELLER_LINE_EXCLUDE` chặn "Đơn vị bán hàng" ăn nhầm "Đơn vị mua" (fuzzy 80.0); buyer_company labels (Tên đơn vị/Company's name) ưu tiên trước person label.
+- **VAT triple**: `invoice_id` = Số (No.) / Số HD / Mã HD; tách riêng `invoice_series` = Ký hiệu (Serial), `invoice_form` = Mẫu số (Form) — không còn dính nhầm (`Mẫu số` không đọc nhầm dòng Mã số thuế qua `_FORM_LINE_EXCLUDE`). Schemas/models/migration/frontend đã thêm 2 trường này.
+- **Thuế suất ≠ tiền thuế**: `_TAX_RATE_LINE` chặn "Thuế suất GTGT: 10%" ("Thu sut"/"Thué suát" mờ cũng khớp); tax chỉ nhận từ "Tiền thuế GTGT"/"GST"/"TAX" có số tiền thật.
+- **Exclude-label override**: exclude label chỉ thắng khi field label của dòng đó không khớp mạnh (score ≥99) — "(Excluded GST) Sub Total" không còn nhét 411.50 vào tax, và "Tổng tiền thanh toán" không còn bị "tiền hàng" fuzzy giết.
+- **`_value_after_label` longest-head-first**: "Đơn vị bán hàng CÔNG TY..." ăn nhãn "đơn vị bán hàng" (không ăn "đơn vị bán" rồi nhả "hàng CÔNG TY..." ra làm value) — sửa seller='TY CÓ PHÁN...' trên EFY.
+- **`_cell_number` chống nhiễu**: "35 030" (dấu cách thành nhóm nghìn) → 35030; `MIN_ITEM_MONEY` áp sau khi qty suy ra từ toán (item 55.00=1×55 không bị drop).
+- **`_first_summary_line`**: bỏ qua dòng TITLE (`HÓA ĐƠN...`/`TAX INVOICE`), dòng nhãn thuế có token taxid-shape; summary phải chứa số tiền.
+- **postprocessor.py**: ngày "07 thg 5, 2023", "Ngày (date) 26 tháng (month) 06 năm (year) 2023" (NHẬN label EN trong ngoặc), "17/01/2023 - 17:36" (gộp `-` trước giờ).
+
+### So trước/sau (11 fixture × 16 trường = 176 điểm)
+- Script: `python scripts/compare_kie.py` (so với BEFORE snapshot `before_kie_results.json` + GT).
+- **BEFORE 102/176 = 58.0% → AFTER 158/176 = 89.8%.**
+- Sạch hoàn toàn: seller/buyer VAT, invoice_id/series/form VAT, tất cả items của VAT convert + 2 bill nhà hàng VN + BOOK TA + ZHENG HUI + 2 hóa đơn sách VN.
+- MISS còn lại (18 điểm) tập trung ở 3 fixture OCR kém:
+  - `my_lightroom`: OCR gộp 1 dòng chữ in đậm + địa chỉ + ROC (dòng 0 dài 130 ký tự) — KIE không tách được vì bản thân OCR không xuất box riêng cho tên shop.
+  - `my_crosschannel`: 4 món dạng `@ 1 7000` in dọc lệch cột; total chỉ in "Total Amt Incl. GST @ 6% : 7.95" (nhãn dài, OCR tách kỳ lạ). 1/4 items nhận được.
+  - `vat_blurred`: ảnh nhòe — seller/buyer dòng label đã bị OCR gộp/"(Seller):" mất giá trị, tax_id=None đúng theo GT (không có trên ảnh), invoice_id=None (Không in số).
+  - `vat_efy_template`: invoice_id "0000000" là số mẫu, KHÔNG phải số hóa đơn thật (GT=None); ảnh là form trống.
+- Điểm mấu chốt: **các MISS còn lại là giới hạn của OCR (ảnh mờ/chụp lệch) chứ không phải logic KIE** — cần OCR tốt hơn (model to hơn) hoặc ảnh chất lượng hơn.
+
+### Test
+- 41/41 pass: 17 test KIE cũ + 24 test khác. Test KIE không phụ thuộc ảnh (replay token dump).
+- `test_kie_extractor.py` thêm: STT-vs-SL, hint-row, block splitting, exclude-label override, seller footer... (đã có sẵn từ các đợt trước).
+
+## 0. Cập nhật 08/11/2026 — Spatial KIE viết lại hoàn toàn
 
 **Kết quả headline: entity accuracy trên bộ fixture OCR thật tăng từ 48.2% (27/56 trường) → 100% (56/56). 41/41 test pass (17 test KIE mới).**
 

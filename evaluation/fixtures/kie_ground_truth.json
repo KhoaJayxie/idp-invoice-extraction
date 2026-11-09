@@ -145,5 +145,239 @@
   "tax_id": null,
   "timestamp": "2025-06-16T00:00:00",
   "total_cost": 12000000
+ },
+ "vat_convert_abc": {
+  "address": "Tng 9 Technosoft, Duy Tân, Cu Giy, Hà Ni",
+  "buyer": "Công ty TNHH Bão Ngoc",
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": null,
+  "discount": 0,
+  "invoice_id": "0000003",
+  "invoice_series": "HM/17E",
+  "invoice_form": "01GTKT0/001",
+  "items": [
+   {
+    "amount": 8000000,
+    "name": "Tù lanh Hitachi 110 lít",
+    "quantity": 1,
+    "unit_price": 8000000
+   }
+  ],
+  "seller": "Công ty c phn ABC",
+  "subtotal": 8000000,
+  "tax": 800000,
+  "tax_id": "0101243150",
+  "timestamp": "2017-10-16T00:00:00",
+  "total_cost": 8800000
+ },
+ "vat_blurred": {
+  "address": null,
+  "buyer": null,
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": "VND",
+  "discount": 0,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "items": [
+   {
+    "amount": 38800,
+    "name": "VIETYIN RICE NOODLE 500GX40BAG",
+    "quantity": 500,
+    "unit_price": 77.6
+   },
+   {
+    "amount": 38412,
+    "name": "VIETYINFRESHVERMICELLI500GX40BAG",
+    "quantity": 495,
+    "unit_price": 77.6
+   }
+  ],
+  "seller": null,
+  "subtotal": 77212,
+  "tax": 0,
+  "tax_id": null,
+  "timestamp": "2023-06-26T00:00:00",
+  "total_cost": 77212
+ },
+ "vn_resto_comnieu": {
+  "address": null,
+  "buyer": null,
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": null,
+  "discount": 0,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "items": [
+   {
+    "amount": 30000,
+    "name": "Cn Niêu",
+    "quantity": 2,
+    "unit_price": 15000
+   },
+   {
+    "amount": 150000,
+    "name": "Lu'on Xào Sà Ót",
+    "quantity": 1,
+    "unit_price": 50000
+   },
+   {
+    "amount": 140000,
+    "name": "Thi: Trec Xào Cây Toi",
+    "quantity": 1,
+    "unit_price": 40000
+   },
+   {
+    "amount": 35000,
+    "name": "Carh cài gng",
+    "quantity": 1,
+    "unit_price": 35000
+   }
+  ],
+  "seller": "COM NIÈU AN NHIEN",
+  "subtotal": 355000,
+  "tax": 0,
+  "tax_id": null,
+  "timestamp": "2023-01-17T00:00:00",
+  "total_cost": 355000
+ },
+ "vn_resto_gaigarden": {
+  "address": null,
+  "buyer": null,
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": null,
+  "discount": 0,
+  "invoice_id": "70104",
+  "invoice_series": null,
+  "invoice_form": null,
+  "items": [
+   {
+    "amount": 100000,
+    "name": "Nuóc sui nhò / Water small",
+    "quantity": 5,
+    "unit_price": 20000
+   },
+   {
+    "amount": 850000,
+    "name": "Set Com Gà",
+    "quantity": 1,
+    "unit_price": 850000
+   },
+   {
+    "amount": 936000,
+    "name": "Saigon (Lon)",
+    "quantity": 24,
+    "unit_price": 39000
+   },
+   {
+    "amount": 30000,
+    "name": "Mit",
+    "quantity": 1,
+    "unit_price": 30000
+   }
+  ],
+  "seller": null,
+  "subtotal": 1916000,
+  "tax": 0,
+  "tax_id": null,
+  "timestamp": "2023-05-07T00:00:00",
+  "total_cost": 1916000
+ },
+ "my_crosschannel": {
+  "address": null,
+  "buyer": null,
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": "MYR",
+  "discount": 0,
+  "invoice_id": "BTG-050036",
+  "invoice_series": null,
+  "invoice_form": null,
+  "items": [
+   {
+    "amount": 1.8,
+    "name": "20MM HERO PVC CONDUIT PIPE",
+    "quantity": 1,
+    "unit_price": 1.8
+   },
+   {
+    "amount": 1.91,
+    "name": "15A PVC CONNECTOR",
+    "quantity": 1,
+    "unit_price": 1.91
+   },
+   {
+    "amount": 3.71,
+    "name": "R & B-C/CLIP 8MM X 100PCS",
+    "quantity": 1,
+    "unit_price": 3.71
+   },
+   {
+    "amount": 0.53,
+    "name": "3\" X 3\" 2862 A1 PVC NUT BOX",
+    "quantity": 1,
+    "unit_price": 0.53
+   }
+  ],
+  "seller": "CROSS CHANNEL NETWORK SDN. BHD.",
+  "subtotal": null,
+  "tax": null,
+  "tax_id": "001151500288",
+  "timestamp": null,
+  "total_cost": 10.0
+ },
+ "my_lightroom": {
+  "address": null,
+  "buyer": null,
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": "MYR",
+  "discount": 0,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "items": [
+   {
+    "amount": 2.83,
+    "name": "CH50514 T5 JOINT 2PIN 2PCS",
+    "quantity": 1,
+    "unit_price": 2.83
+   },
+   {
+    "amount": 66.04,
+    "name": "YT51874 YE30 BK 7W WW LED TRACK LIGHT",
+    "quantity": 2,
+    "unit_price": 33.02
+   }
+  ],
+  "seller": null,
+  "subtotal": 68.87,
+  "tax": 4.13,
+  "tax_id": "1072825-A",
+  "timestamp": "2017-12-20T07:10:35",
+  "total_cost": 73.0
+ },
+ "vat_efy_template": {
+  "address": null,
+  "buyer": null,
+  "buyer_address": null,
+  "buyer_tax_id": null,
+  "currency": null,
+  "discount": 0,
+  "invoice_id": "0000000",
+  "invoice_series": "EY1/7E",
+  "invoice_form": "01GTKT0/001",
+  "items": [],
+  "seller": "CÔNG TY CÓ PHÁN CÔNG NGHE TIN HOC EFY VIET NAM",
+  "subtotal": null,
+  "tax": null,
+  "tax_id": "0102519041",
+  "timestamp": null,
+  "total_cost": null
  }
 }

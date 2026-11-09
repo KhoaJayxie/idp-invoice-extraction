@@ -23,14 +23,15 @@ from backend.app.idp_engine.ocr_detector import OCRToken  # noqa: E402
 from backend.app.schemas.invoice import LineItem  # noqa: E402
 
 FIXTURES = PROJECT_ROOT / "evaluation" / "fixtures"
-TEXT_FIELDS = ("seller", "buyer", "address", "buyer_address", "tax_id", "buyer_tax_id", "invoice_id", "currency")
+TEXT_FIELDS = ("seller", "buyer", "address", "buyer_address", "tax_id", "buyer_tax_id", "invoice_id", "invoice_series", "invoice_form", "currency")
 NUMBER_FIELDS = ("subtotal", "tax", "discount", "total_cost")
 MONEY_TOL = 0.011
 
 
 def load_tokens(name: str) -> list[OCRToken]:
     dump = json.loads((FIXTURES / "ocr_tokens" / f"{name}.json").read_text(encoding="utf-8"))
-    return [OCRToken(t["text"], t["box"], t["confidence"]) for t in dump]
+    rows = dump["tokens"] if isinstance(dump, dict) else dump
+    return [OCRToken(t["text"], t["box"], t["confidence"]) for t in rows]
 
 
 def norm_text(value: str | None) -> str:

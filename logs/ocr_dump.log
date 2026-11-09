@@ -1,0 +1,15 @@
+WARNING: Logging before InitGoogleLogging() is written to STDERR
+W1109 16:51:08.991008 20204 gpu_resources.cc:116] Please NOTE: device: 0, GPU Compute Capability: 12.0, Driver API Version: 13.4, Runtime API Version: 12.9
+[32mCreating model: ('PP-LCNet_x1_0_textline_ori', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\ROG\.paddlex\official_models\PP-LCNet_x1_0_textline_ori`.[0m
+[32mCreating model: ('PP-OCRv6_medium_det', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\ROG\.paddlex\official_models\PP-OCRv6_medium_det`.[0m
+[32mCreating model: ('PP-OCRv6_medium_rec', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\ROG\.paddlex\official_models\PP-OCRv6_medium_rec`.[0m
+OK vat_blurred: 71 tokens -> vat_blurred.json
+OK vat_convert_abc: 57 tokens -> vat_convert_abc.json
+OK vat_efy_template: 84 tokens -> vat_efy_template.json
+OK vn_resto_comnieu: 45 tokens -> vn_resto_comnieu.json
+OK vn_resto_gaigarden: 34 tokens -> vn_resto_gaigarden.json
+OK my_crosschannel: 50 tokens -> my_crosschannel.json
+OK my_lightroom: 69 tokens -> my_lightroom.json

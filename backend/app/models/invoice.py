@@ -18,6 +18,8 @@ class Invoice(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     invoice_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    invoice_series: Mapped[str | None] = mapped_column(String(32))
+    invoice_form: Mapped[str | None] = mapped_column(String(32))
     seller: Mapped[str | None] = mapped_column(String(255), index=True)
     buyer: Mapped[str | None] = mapped_column(String(255), index=True)
     address: Mapped[str | None] = mapped_column(Text)

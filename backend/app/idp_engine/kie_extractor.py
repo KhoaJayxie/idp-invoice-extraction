@@ -18,6 +18,12 @@ import re
 import unicodedata
 from typing import Any
 
+_TITLE_LINE = re.compile(
+    r"(?:hóa đơn|hoa don|biên lai|bien lai|phiếu|phieu|invoice|receipt|cash bill|"
+    r"thanh toán|thanh toan|payment)",
+    re.IGNORECASE,
+)
+
 from rapidfuzz import fuzz
 
 from ..schemas.invoice import InvoiceData, LineItem
@@ -31,24 +37,35 @@ from .postprocessor import currency_hint, normalize_datetime, normalize_money, n
 
 LABELS: dict[str, tuple[str, ...]] = {
     "seller": (
-        "tên cửa hàng", "ten cua hang", "đơn vị bán", "don vi ban", "người bán", "nguoi ban",
-        "seller", "supplier", "merchant",
+        "tên cửa hàng", "ten cua hang", "đơn vị bán", "don vi ban", "đơn vị bán hàng",
+        "don vi ban hang", "người bán", "nguoi ban", "người bán hàng", "nguoi ban hang",
+        "seller", "supplier",
     ),
     "buyer": (
         "hóa đơn được gửi cho", "hoa don duoc gui cho", "gửi cho", "gui cho", "đơn vị mua",
-        "don vi mua", "người mua", "nguoi mua", "khách hàng", "khach hang", "buyer", "bill to",
+        "don vi mua", "người mua", "nguoi mua", "người mua hàng", "nguoi mua hang",
+        "khách hàng", "khach hang", "tên đơn vị", "ten don vi", "buyer", "bill to",
         "billed to", "sold to", "customer",
     ),
+    # Labels naming the buying COMPANY on VAT invoices; when several buyer
+    # labels match, these beat person-name labels ("họ tên người mua hàng").
+    "buyer_company": ("tên đơn vị", "ten don vi", "đơn vị mua", "don vi mua", "company's name", "company name"),
     "address": ("địa chỉ", "dia chi", "address"),
     "invoice_id": (
         "document no", "document number", "doc no", "receipt no", "receipt number", "receipt #",
         "invoice no", "invoice number", "invoice #", "invoice id", "bill no", "bill number",
-        "cash bill no", "số hóa đơn", "so hoa don", "mã hóa đơn", "ma hoa don",
+        "cash bill no", "số hóa đơn", "so hoa don", "mã hóa đơn", "ma hoa đơn",
         "số chứng từ", "so chung tu", "số phiếu", "so phieu", "ref no", "reference no",
+        "số (no.)", "so (no.)", "số:", "so:", "số hd", "so hd", "mã hd", "ma hd", "hđ:", "hd:",
     ),
+    # Vietnamese VAT identifiers that are NOT the invoice number: the
+    # printed series/symbol ("Ký hiệu") and the government form template
+    # number ("Mẫu số").
+    "invoice_series": ("ký hiệu", "ky hieu", "serial", "series", "symbol"),
+    "invoice_form": ("mẫu số", "mau so", "form no", "form number"),
     "timestamp": (
         "invoice date", "dated", "ngày giờ", "ngay gio", "ngày", "ngay", "date", "time",
-        "thời gian", "thoi gian",
+        "thời gian", "thoi gian", "ngày bán", "ngay ban",
     ),
     "tax_id": (
         "mã số thuế", "ma so thue", "mst", "mã thuế", "ma thue", "tax id", "tax code", "tax no",
@@ -57,33 +74,76 @@ LABELS: dict[str, tuple[str, ...]] = {
     ),
     "subtotal": (
         "cộng tiền hàng", "cong tien hang", "tạm tính", "tam tinh", "tổng phụ", "tong phu",
-        "sub total", "subtotal", "tiền hàng", "tien hang",
+        "sub total", "subtotal", "tiền hàng", "tien hang", "total amount",
     ),
     "discount": ("giảm giá", "giam gia", "chiết khấu", "chiet khau", "discount"),
     "tax": (
         "thuế vat", "thue vat", "tiền thuế", "tien thue", "thuế", "thue", "total gst", "gst",
-        "vat", "tax", "sst", "ppn", "sales tax",
+        "vat", "tax", "sst", "ppn", "sales tax", "tiền thuế gtgt", "tien thue gtgt",
+        "thuế gtgt", "thue gtgt",
     ),
     "total_cost": (
         "tổng thanh toán", "tong thanh toan", "thành tiền", "thanh tien", "tổng cộng", "tong cong",
         "grand total", "rounded total", "round total", "final total", "cần thanh toán",
         "can thanh toan", "total", "amount due", "tổng tiền", "tong tien",
+        "tổng cộng tiền thanh toán", "tong cong tien thanh toan", "tổng tiền thanh toán",
+        "tong tien thanh toan", "tổng cộng tiền", "tong cong tien",
     ),
 }
 
 TOTAL_MODIFIERS = ("grand", "rounded", "round total", "final")
 _MONEY_LINE_EXCLUDE = re.compile(
-    r"(?:qty|số lượng|so luong|discount|giảm|giam|sub\s?total|tạm tính|tam tinh|"
-    r"tổng phụ|tong phu|rounding|adjustment|cash|change|tiền thối|tien thoi)",
+    r"(?:qty|số lượng|so luong|discount|giảm|giam|chiết khấu|chiet khau|sub\s?total|tạm tính|tam tinh|"
+    r"tổng phụ|tong phu|rounding|adjustment|cash|change|tiền thối|tien thoi|"
+    r"tiền khách đưa|tien khach dua|tiền thừa|tien thua|thanh toán tiền mặt|"
+    r"thanh toan tien mat|pass\s?wifi|bằng chữ|bang chu|tỷ giá|ty gia)",
     re.IGNORECASE,
 )
 _TAXID_LABEL_LINE = re.compile(
     r"(?:gst|tax|vat|mst|mã số thuế|ma so thue|mã thuế|ma thue|reg)", re.IGNORECASE
 )
+# "Đơn vị bán hàng" fuzzily matches "đơn vị mua" at exactly the 80.0
+# threshold — buyer extraction must skip seller-labeled lines outright.
+_SELLER_LINE_EXCLUDE = re.compile(
+    r"(?:đơn vị bán|don vi ban|người bán|nguoi ban|seller|supplier)",
+    re.IGNORECASE,
+)
 _TAXID_VALUE = re.compile(
     r"\b(?:\d{10}(?:-\d{3})?|\d{12,14}|[A-Za-z]{1,3}\d{5,9}-[A-Za-z]|\d{5,9}-[A-Za-z])\b"
 )
+# "Mẫu số" (form template) must not read the tax-code line ("Mã số thuế:
+# 0101243150" fuzzily matches "mẫu số" at ~83): exclude tax/bank lines.
+_FORM_LINE_EXCLUDE = re.compile(
+    r"(?:thuế|thue|mst|gst|vat|tax\b|tài khoản|tai khoan|account|m[ãaà]\s*s[oô0]|bank)",
+    re.IGNORECASE,
+)
 _ID_VALUE_PATTERN = re.compile(r"(?=[A-Za-z0-9./#_-]*\d)[A-Za-z0-9][A-Za-z0-9./#_-]{2,63}")
+# Lines that carry a different "Số ..." identifier (bank account, tax code,
+# serial, form template) must never feed invoice_id. Matched against both the
+# raw and the folded line text (OCR drops diacritics: "Mẫu số" -> "Mu só").
+_ID_LINE_EXCLUDE = re.compile(
+    r"(?:tài khoản|tai khoan|account|thuế|thue|mst|gst\b|vat\b|tax\b|ký hiệu|ky hieu|"
+    r"ky\s*h\w*u|mu\s*so|mau so|ma\s*u\s*so|serial|series|fax|tel\b|điện thoại|dien thoai|website|email)",
+    re.IGNORECASE,
+)
+# Money-label vocabulary for separating structure lines from names.
+_MONEY_LABEL_HINT = re.compile(
+    r"(?:tien hang|cong tien|tong tien|tong cong|thanh tien|sub ?total|tam tinh|tong phu|"
+    r"thue|thanh toan|thanh toan|giam gia|chiet khau|discount|amount due|total|tiền hàng|"
+    r"tiền khách|tien khach|tiền thừa|tien thua|bằng chữ|bang chu)",
+    re.IGNORECASE,
+)
+# "Thuế suất GTGT: 10%" carries the VAT RATE, not the VAT amount (OCR may
+# mangle it to "Thu sut GTGT" / "Thu suât").
+_TAX_RATE_LINE = re.compile(r"(?:thu[ếêéèe\s]*su|vat\s*rate|tax\s*rate|gst\s*rate)", re.IGNORECASE)
+# Candidate VALUE segments that are really labels/boilerplate (OCR mangles
+# "Điện thoại (Tel)", signature hints "(Ký, ghi rõ họ tên)", "Payment method").
+_VALUE_SEG_REJECT = re.compile(
+    r"(?:tel\b|email|@|website|fax|hotline|payment|thanh toán|thanh toan|ghi chú|ghi chu|"
+    r"\bnote\b|\bký\b|\bky\b|sign|tài khoản|tai khoan|account|seller|buyer|mua hàng|"
+    r"mua hang|bán hàng|ban hang)",
+    re.IGNORECASE,
+)
 _TIME_PATTERN = re.compile(r"\b(\d{1,2})[:h](\d{2})(?::(\d{2}))?\b")
 _TIME_LABELS = ("time", "thời gian", "thoi gian")
 _DATEISH_VALUE = re.compile(r"\d{1,2}\s*[/.\-]\s*\d{1,2}|\bth[áa]ng\b|\b20\d{2}\b")
@@ -105,13 +165,17 @@ _BUSINESS_HINTS = (
     "hardware", "motor", "auto", "fashion", "boutique", "printing", "construction",
 )
 _TABLE_ROLES: dict[str, tuple[str, ...]] = {
-    "desc": ("item", "description", "desc", "code", "product", "sản phẩm", "san pham", "hàng hóa",
+    "stt": ("stt", "số thứ tự", "so thu tu", "no.", "(no.)"),
+    "code": ("mã hàng", "ma hang", "mã sp", "ma sp", "item code", "code"),
+    "desc": ("item", "description", "desc", "product", "sản phẩm", "san pham", "hàng hóa",
              "hang hoa", "hạng mục", "hang muc", "chi tiết", "chi tiet", "mô tả", "mo ta",
-             "tên hàng", "ten hang", "goods", "particulars", "name"),
+             "tên hàng", "ten hang", "tên món", "ten mon", "goods", "particulars", "name"),
+    "unit": ("đơn vị tính", "don vi tinh", "dvt", "unit"),
     "qty": ("qty", "quantity", "số lượng", "so luong", "sl"),
     "price": ("price", "unit", "đơn giá", "don gia", "giá", "gia", "rsp", "rate"),
     "amount": ("amount", "amt", "thành tiền", "thanh tien", "total", "tổng cộng", "tong cong",
                "tổng tiền", "tong tien", "sum"),
+    "vatrate": ("thuế suất", "thue suat", "vat rate", "tax rate"),
     "disc": ("disc", "discount", "giảm giá", "giam gia", "giảm", "giam"),
 }
 _SUMMARY_HINTS = (
@@ -121,6 +185,14 @@ _SUMMARY_HINTS = (
     "adjustment", "cash", "change", "tiền mặt", "tien mat", "tiền thối", "tien thoi",
     "gst summary", "tax summary", "gst", "thuế", "thue", "vat", "tax", "discount",
     "giảm giá", "giam gia", "cần thanh toán", "can thanh toan",
+    # VAT-invoice summary block ("Tổng hợp / In summary") and per-rate rows —
+    # never item rows.
+    "tổng hợp", "tong hop", "in summary", "hàng hóa không chịu", "hang hoa khong chiu",
+    "hàng hóa chịu thuế", "hang hoa chiu thue", "thuế suất", "thue suat",
+    "tri giá chưa", "tri gia chua", "trị giá chưa", "tri gia thanh toan",
+    "cộng tiền hàng", "cong tien hang", "tiền khách đưa", "tien khach dua",
+    "tiền thừa", "tien thua", "bằng chữ", "bang chu", "service charge", "phụ thu",
+    "phu thu",
 )
 _SUMMARY_LABELS = _SUMMARY_HINTS
 _UNIT_WORDS = ("pc", "pcs", "unit", "units", "kg", "g", "gr", "ml", "box", "hộp", "hop", "cái",
@@ -356,12 +428,26 @@ class KIEExtractor:
             value = parts[1].strip(" .-\t")
             return value or None
         words = text.split()
+        scored_labels = sorted(labels, key=len, reverse=True)
+        # Exact pass: the head must END with the longest label it contains —
+        # "Đơn vị bán hàng CÔNG TY..." must consume "đơn vị bán hàng" (not the
+        # shorter "đơn vị bán", which would leak "hàng" into the value).
+        best_count, best_len = None, -1
+        for count in range(1, min(5, len(words)) + 1):
+            folded_head = self._fold(" ".join(words[:count]))
+            for label in scored_labels:
+                needle = self._fold(label)
+                if folded_head.endswith(needle) and len(needle) > best_len:
+                    best_len, best_count = len(needle), count
+        if best_count is not None:
+            remainder = " ".join(words[best_count:]).strip(" .:-\t")
+            if remainder:
+                return remainder
+        # Fuzzy pass for OCR-mangled labels ("Recelpt #"):
         for count in range(1, min(5, len(words))):
             head = " ".join(words[:count])
-            scored_labels = sorted(labels, key=len, reverse=True)
-            exact = any(self._fold(label) in self._fold(head) for label in scored_labels)
-            if exact or self._label_score(scored_labels, head) is not None:
-                remainder = " ".join(words[count:]).strip(" .-\t")
+            if self._label_score(scored_labels, head) is not None:
+                remainder = " ".join(words[count:]).strip(" .:-\t")
                 if remainder:
                     return remainder
         return None
@@ -386,6 +472,11 @@ class KIEExtractor:
         raw = re.sub(r"(?i)\b(?:vnd|vnđ|myr|usd|sgd|rm)\b", "", raw)
         raw = re.sub(r"[₫$€£]", "", raw).strip()
         raw = re.sub(r"(?i)\b(?:pcs?|units?|kg|gr|ml|box|hộp|hop|cái|cai|set|roll|pkt)\b\.?", "", raw).strip()
+        # "35 030" — OCR turned a thousands separator into a space; when every
+        # space-separated group is digit-only, re-join them into one number.
+        groups = raw.split()
+        if len(groups) > 1 and all(re.fullmatch(r"[\dO]+", g) for g in groups):
+            raw = "".join(groups)
         match = re.search(r"\d[\d.,]*\d|\d", raw)
         if match is None:
             # OCR reads 0 as O: a lone O/OO beside a currency marker is zero.
@@ -408,6 +499,31 @@ class KIEExtractor:
         num = match.group(0).rstrip(".,")
         return normalize_money(num, decimal_dot)
 
+    def _cell_numbers(self, text: str, decimal_dot: bool | None) -> list[float]:
+        """All numbers inside a cell token.
+
+        OCR glues neighbouring cells into one box ("1 850,000 850,000",
+        "20,000 100,000"); each number group becomes its own cell value so
+        the row math can still resolve. Single-number tokens behave exactly
+        like _cell_number (empty list when it would return None).
+        """
+        raw = unicodedata.normalize("NFKC", str(text or "")).strip()
+        groups = re.findall(r"[\dO][\dO.,]*[\dO]|[\dO]", raw)
+        if len(groups) <= 1:
+            one = self._cell_number(text, decimal_dot)
+            return [] if one is None else [one]
+        # Only split when the groups look like separate numbers (separators
+        # inside), not a single number whose separator became a space.
+        if all(re.fullmatch(r"[\dO]+", g) for g in raw.split()) and len(raw.split()) > 1:
+            one = self._cell_number(text, decimal_dot)
+            return [] if one is None else [one]
+        values: list[float] = []
+        for group in groups:
+            value = self._cell_number(group, decimal_dot)
+            if value is not None and abs(value) < 1e8:
+                values.append(value)
+        return values
+
     def _token_role(self, token: _T, columns: dict[str, tuple[float, float]]) -> str | None:
         center = (token.x1 + token.x2) / 2.0
         for role, (lo, hi) in columns.items():
@@ -420,11 +536,13 @@ class KIEExtractor:
                 best_role, best_dist = role, dist
         return best_role
 
-    def _role_keyword_match(self, token_text: str) -> set[str]:
+    def _role_keyword_match(self, token_text: str, multiword_only: bool = False) -> set[str]:
         folded = self._fold(token_text)
         roles: set[str] = set()
         for role, keywords in _TABLE_ROLES.items():
             for keyword in keywords:
+                if multiword_only and " " not in keyword:
+                    continue
                 needle = self._fold(keyword)
                 if len(needle) <= 3:
                     if re.search(rf"(?<![a-z0-9]){re.escape(needle)}(?![a-z0-9])", folded):
@@ -433,7 +551,43 @@ class KIEExtractor:
                 elif needle in folded or (len(folded) >= 3 and fuzz.ratio(needle, folded) >= 85):
                     roles.add(role)
                     break
+        # One token can textually match two roles ("CODE/DESC", "Unit" under a
+        # price header): resolve to the role the column actually is.
+        if {"code", "desc"} <= roles:
+            roles.discard("code")  # "CODE/DESC" is a description column
+        if {"unit", "price"} <= roles:
+            if "gia" in folded or "price" in folded:
+                roles.discard("unit")  # "Unit Price"
+            else:
+                roles.discard("price")  # "Đơn vị tính" / lone "Unit"
         return roles
+
+    _HINT_TOKEN = re.compile(r"^(?:[0-9]|[A-Za-z]|[0-9]+\s*=\s*[0-9]+\s*[x×]\s*[0-9]+|[0-9]+\s*[x×]\s*[0-9]+|[A-Za-z]\s*=\s*.*)$")
+
+    @classmethod
+    def _is_hint_row(cls, text: str) -> bool:
+        """Column-hint row printed under a table header ("1 2 3 4 5 6=4x5",
+        "A B C D 1 2 3=1x2") — layout metadata, never an item row."""
+        tokens = [t for t in normalize_text(text).split() if t.strip("():.")]
+        if len(tokens) < 3:
+            return False
+        return all(cls._HINT_TOKEN.match(t.strip("():. ")) or t.strip("():. ") == "" for t in tokens if t.strip("():. ")) and any(
+            "=" in t or t.strip("():. ").isdigit() for t in tokens
+        )
+
+    def _line_is_role_text(self, line: _Line) -> bool:
+        """True when every token of the line is table-header vocabulary or a
+        parenthesised hint — the italic second row of a header."""
+        tokens = [t.text.strip() for t in line.toks if t.text.strip()]
+        if not tokens:
+            return False
+        for text in tokens:
+            if text.startswith("(") and text.endswith(")"):
+                continue
+            if self._role_keyword_match(text):
+                continue
+            return False
+        return True
 
     @staticmethod
     def _currency_decimal(text: str, hint: str | None) -> bool | None:
@@ -456,10 +610,18 @@ class KIEExtractor:
             for token in line.toks:
                 for role in self._role_keyword_match(token.text):
                     roles.setdefault(role, []).append(token)
+            # OCR splits header phrases across boxes ("Thành" | "tiên"): pair
+            # two role-less neighbours and retry with multi-word keywords
+            # only, so no phantom columns appear next to real ones.
+            for left, right in zip(line.toks, line.toks[1:]):
+                if self._role_keyword_match(left.text) or self._role_keyword_match(right.text):
+                    continue
+                for role in self._role_keyword_match(f"{left.text} {right.text}", multiword_only=True):
+                    roles.setdefault(role, []).extend([left, right])
             if len(roles) < 2 or not ({"qty", "price", "amount"} & set(roles)):
                 continue
             header_last = index
-            for extra_index in range(index + 1, min(index + 3, len(lines))):
+            for extra_index in range(index + 1, min(index + 4, len(lines))):
                 extra_roles: set[str] = set()
                 for token in lines[extra_index].toks:
                     extra_roles |= self._role_keyword_match(token.text)
@@ -468,6 +630,13 @@ class KIEExtractor:
                         roles.setdefault(role, []).extend(
                             t for t in lines[extra_index].toks if role in self._role_keyword_match(t.text)
                         )
+                    header_last = extra_index
+                elif extra_roles and self._line_is_role_text(lines[extra_index]):
+                    # Italic subtitle row of the header ("(No.) (Description)
+                    # (Unit) (Quantity)") — same roles, smaller font.
+                    header_last = extra_index
+                elif self._is_hint_row(lines[extra_index].text):
+                    # Column-hint row ("1 2 3 4 5 6=4x5") belongs to the header.
                     header_last = extra_index
                 else:
                     break
@@ -493,6 +662,14 @@ class KIEExtractor:
             return index, header_last, columns, currency
         return None
 
+    def _row_starts_with_stt(self, line: _Line, columns: dict[str, tuple[float, float]]) -> bool:
+        if not line.toks:
+            return False
+        first = min(line.toks, key=lambda t: (t.x1, t.y1))
+        if not re.fullmatch(r"\d{1,3}", first.text.strip()):
+            return False
+        return self._token_role(first, columns) == "stt"
+
     def _parse_items(
         self, lines: list[_Line], header: tuple[int, int, dict[str, tuple[float, float]], str | None]
     ) -> tuple[list[LineItem], int, list[list[_T]]]:
@@ -502,6 +679,40 @@ class KIEExtractor:
         blocks: list[list[list[_T]]] = []
         open_block: list[list[_T]] | None = None
         summary_start = len(lines)
+        # Tables whose data rows lead with a row number ("STT") treat a bare
+        # digit differently from tables without one: in an STT table a
+        # desc-only line without a row number is a wrapped name tail, while
+        # in a plain table it is the next item's name.
+        stt_rows = 0
+        nums_first = False
+        probed = False
+        for line in lines[header_last + 1 :]:
+            if self._is_summary_line(line.text):
+                break
+            if self._looks_like_junk(line.text) or self._is_hint_row(line.text):
+                continue
+            if self._row_starts_with_stt(line, columns):
+                stt_rows += 1
+            if not probed:
+                # Layout convention probe on the FIRST data row only: a purely
+                # numeric first row means this table prints the cells line
+                # ABOVE the item name (wholesale invoices), so name lines join
+                # the open numeric block. A name-first table (restaurant
+                # receipts) behaves the opposite way.
+                probed = True
+                has_letters = False
+                for token in line.toks:
+                    core = re.sub(r"\d[\d.,]*\d|\d", "", token.text)
+                    core = re.sub(r"(?:[₫$€£%\-.,:\s]|rm|usd|sgd|vnd|pc|pcs|c)", "", core, flags=re.IGNORECASE)
+                    if re.search(r"[A-Za-zÀ-ỹ]{2,}", core):
+                        has_letters = True
+                        break
+                has_cells = any(
+                    self._cell_number(t.text, decimal_dot) is not None for t in line.toks
+                )
+                if has_cells and not has_letters:
+                    nums_first = True
+        stt_col_used = stt_rows >= 2
         for index in range(header_last + 1, len(lines)):
             line = lines[index]
             if self._is_summary_line(line.text):
@@ -510,6 +721,8 @@ class KIEExtractor:
                     blocks.append(open_block)
                     open_block = None
                 break
+            if self._is_hint_row(line.text) or self._looks_like_junk(line.text):
+                continue
             groups = [list(seg.toks) for seg in line.segs]
             numeric_cells: dict[str, int] = {"qty": 0, "price": 0, "amount": 0}
             for seg in line.segs:
@@ -529,10 +742,22 @@ class KIEExtractor:
                     if open_block:
                         blocks.append(open_block)
                     open_block = groups
-            elif joins_open:
+            elif (
+                joins_open
+                and open_block is not None
+                and (
+                    not self._block_has_numeric(open_block, columns, decimal_dot)
+                    or (stt_col_used and len(line.toks) <= 4 and not self._row_starts_with_stt(line, columns))
+                    or nums_first
+                )
+            ):
+                # Three ways a name-less line joins the open block: the block
+                # has no cells yet (wrapped name before its numbers); it is a
+                # short tail without a row number in an STT-numbered table
+                # ("small" under "Nước suối nhỏ / Water"); or this table
+                # prints the cells line ABOVE the name (zhenghui-style), so
+                # every name line belongs to the numeric block above it.
                 open_block.extend(groups)
-            elif self._looks_like_junk(line.text):
-                continue
             else:
                 if open_block:
                     blocks.append(open_block)
@@ -593,27 +818,52 @@ class KIEExtractor:
         desc_toks: list[_T] = []
         cells: dict[str, list[tuple[_T, float]]] = {"qty": [], "price": [], "amount": [], "disc": []}
         desc_range = columns.get("desc")
-        for token in flat:
-            stripped = token.text.strip()
-            role = self._token_role(token, columns)
-            value = self._cell_number(token.text, decimal_dot)
-            if value is not None and abs(value) >= 1e8:
-                value = None  # barcode/phone-shaped, never an item cell
-            if value is not None and (role == "desc" or (desc_range is not None and token.x2 <= desc_range[1] + 10)):
-                # Numeric token in the description column: a bare 1-3 digit
-                # integer is a quantity whose header column was lost to OCR
-                # noise ("SÓ GIÒ" for "Số lượng"); longer digit runs are item
-                # codes.
-                if re.fullmatch(r"\d{1,3}", stripped):
-                    cells["qty"].append((token, value))
-                continue
-            if role in cells and value is not None:
-                cells[role].append((token, value))
-            elif role in cells and len(stripped) <= 3:
-                # OCR annotation junk ("GA", "*") inside a numeric column.
-                continue
-            elif re.search(r"[A-Za-zÀ-ỹ]", stripped) and not re.fullmatch(r"(?i)(?:rm|usd|myr|sgd)", stripped):
-                desc_toks.append(token)
+        saw_letter = False
+        for group in block:
+            for token in group:
+                stripped = token.text.strip()
+                role = self._token_role(token, columns)
+                value = self._cell_number(token.text, decimal_dot)
+                if value is not None and abs(value) >= 1e8:
+                    value = None  # barcode/phone-shaped, never an item cell
+                if value is not None and (role in {"desc", "stt"} or (desc_range is not None and token.x2 <= desc_range[1] + 10)):
+                    # Numeric token left of / inside the description column.
+                    # Between name words it is part of the name ("Hitachi 110
+                    # lít"); after all name text a bare 1-3 digit integer is a
+                    # quantity whose header column was lost to OCR noise
+                    # ("SÓ GIÒ" for "Số lượng"); before any name text it is
+                    # the row number (STT); longer digit runs are item codes.
+                    if re.fullmatch(r"\d{1,3}", stripped) and saw_letter:
+                        if any(t.x1 > token.x1 for t in group if t is not token and re.search(r"[A-Za-zÀ-ỹ]", t.text)):
+                            desc_toks.append(token)  # digits inside the name
+                            saw_letter = True
+                        else:
+                            cells["qty"].append((token, value))
+                    continue
+                if role in cells and value is not None:
+                    cells[role].append((token, value))
+                    extra = [v for v in self._cell_numbers(token.text, decimal_dot) if v != value]
+                    for extra_value in extra:
+                        cells[role].append((token, extra_value))
+                elif role in cells and len(stripped) <= 3:
+                    # OCR annotation junk ("GA", "*") inside a numeric column.
+                    continue
+                elif re.search(r"[A-Za-zÀ-ỹ]", stripped) and role in {"stt", "vatrate"}:
+                    # A letter token in a numeric-only column is almost always
+                    # wrapped name text ("small" under an STT span).
+                    desc_toks.append(token)
+                    saw_letter = True
+                elif role in {"code", "unit"}:
+                    continue  # own column: never part of the item name
+                elif re.search(r"[A-Za-zÀ-ỹ]{2,}", stripped):
+                    # Long word text is a product name even when its x-center
+                    # lands in a numeric column ("SR: 2.4MM STARWELD RED
+                    # HEAD TUNGSTEN ROD" spans the qty column).
+                    desc_toks.append(token)
+                    saw_letter = True
+                elif re.search(r"[A-Za-zÀ-ỹ]", stripped) and not re.fullmatch(r"(?i)(?:rm|usd|myr|sgd)", stripped):
+                    desc_toks.append(token)
+                    saw_letter = True
         while desc_toks and re.fullmatch(r"\d{1,13}", desc_toks[0].text.strip()):
             desc_toks.pop(0)
         name = normalize_text(" ".join(t.text for t in desc_toks))
@@ -637,8 +887,18 @@ class KIEExtractor:
         if qty is None:
             if price and amount and abs(amount / price - round(amount / price)) <= max(0.05, 0.01 * amount):
                 qty = round(amount / price, 3)
+                # qty*price reproduces the amount even without an explicit
+                # quantity cell ("SR: 2.4MM ... ROD  55.00  55.00") — that IS
+                # the row math.
+                if qty and price and abs(qty * price - amount) <= max(0.05, 0.02 * abs(amount)):
+                    math_ok = True
             else:
                 qty = 1.0
+        # A straggler summary row ("Tổng số lượng: 5") resolves to a tiny
+        # non-math amount; real line items either satisfy the row math or
+        # carry a money-scale amount.
+        if not math_ok and (amount is None or amount < self.MIN_ITEM_MONEY):
+            return None
         if not (0 < qty <= 100000) or (price is not None and price < 0) or (amount is not None and amount < 0):
             return None
         ocr_conf = min(t.conf for t in flat)
@@ -676,6 +936,17 @@ class KIEExtractor:
         qty = qty_values[-1] if qty_values else None
         price = price_values[-1] if price_values else None
         amount = amount_values[-1] if amount_values else None
+        # Borderless receipts glue whole rows into one box ("1 850,000
+        # 850,000", "20,000 100,000"), and those merged boxes land in
+        # whichever numeric column they overlap — so search consecutive
+        # triples across BOTH columns for qty*price=amount.
+        if not qty_values:
+            combined = price_values + amount_values
+            if len(combined) >= 3:
+                for i in range(len(combined) - 2):
+                    q, p, a = combined[i], combined[i + 1], combined[i + 2]
+                    if q > 0 and abs(q * p - a) <= max(0.05, 0.02 * abs(a)):
+                        return q, p, a, True
         return qty, price, amount, False
 
     # ------------------------------------------------- legacy line items
@@ -773,14 +1044,22 @@ class KIEExtractor:
                 break
             if exclude_regex is not None and exclude_regex.search(line.text):
                 continue
+            score = self._label_score(labels, line.text)
             excluded = False
             for _name, exclude_label_set in exclude_labels:
                 if self._label_score(exclude_label_set, line.text) is not None:
+                    # An exclusion only yields when the excluding label beats a
+                    # STRONG (exact) match of this field's own label — "tiền
+                    # hàng" fuzzily matching inside "tổng tiền thanh toán" must
+                    # not kill the total, but "(Excluded GST)" must not feed
+                    # the tax field either.
+                    exc_score = self._label_score(exclude_label_set, line.text)
+                    if score is not None and score >= 99.0 and score >= exc_score:
+                        continue
                     excluded = True
                     break
             if excluded:
                 continue
-            score = self._label_score(labels, line.text)
             if score is None:
                 continue
             decimal_dot = self._currency_decimal(line.text, currency)
@@ -822,10 +1101,15 @@ class KIEExtractor:
         end: int | None = None,
         value_pattern: re.Pattern[str] | None = None,
         allowed_methods: tuple[str, ...] = ("labeled_inline", "labeled_right", "labeled_below"),
+        exclude_regex: re.Pattern[str] | None = None,
     ) -> _Field | None:
         end = len(lines) if end is None else end
         for index in range(start, end):
             line = lines[index]
+            if exclude_regex is not None and (
+                exclude_regex.search(line.text) or exclude_regex.search(self._fold(line.text))
+            ):
+                continue
             for seg_index, seg in enumerate(line.segs):
                 if self._label_score(labels, seg.text) is None:
                     continue
@@ -843,7 +1127,7 @@ class KIEExtractor:
                     right = line.segs[seg_index + 1]
                     raw_value = right.text.strip(" :.-")
                     # A neighbouring label ("THANH TOÁN CHO:") is not a value.
-                    if raw_value and self._classify_line(raw_value) is None:
+                    if raw_value and self._classify_line(raw_value) is None and not _VALUE_SEG_REJECT.search(raw_value):
                         if value_pattern:
                             found = value_pattern.search(raw_value)
                             if not found:
@@ -860,6 +1144,11 @@ class KIEExtractor:
                         below = lines[below_index]
                         if self._label_score(labels, below.text) is not None:
                             continue
+                        below_roles: set[str] = set()
+                        for below_tok in below.toks:
+                            below_roles |= self._role_keyword_match(below_tok.text)
+                        if len(below_roles) >= 2:
+                            break  # ran into the goods-table header
                         if _DATE_LINE.search(below.text) and labels is not self.LABELS["address"]:
                             continue
                         overlap = min(seg.x2, below.box[2]) - max(seg.x1, below.box[0])
@@ -868,7 +1157,7 @@ class KIEExtractor:
                             continue
                         candidate_seg = below.segs[0]
                         raw_value = candidate_seg.text.strip(" :.-")
-                        if not raw_value or self._classify_line(raw_value) is not None:
+                        if not raw_value or self._classify_line(raw_value) is not None or _VALUE_SEG_REJECT.search(raw_value):
                             continue
                         if value_pattern:
                             found = value_pattern.search(raw_value)
@@ -906,6 +1195,58 @@ class KIEExtractor:
                     return index, seg_index
         return None
 
+    _MONEY_LABELS = (
+        LABELS["subtotal"] + LABELS["discount"] + LABELS["tax"] + LABELS["total_cost"]
+        if "LABELS" in dir()
+        else ()
+    )
+
+    def _seller_name_from_line(self, line: _Line) -> tuple[str, list[_Seg], float] | None:
+        """Digit-free, timestamp-free text of `line` scored as a shop name."""
+        name_segs: list[_Seg] = []
+        for seg in line.segs:
+            if self._label_score(self.LABELS["timestamp"], seg.text) is not None:
+                continue
+            if re.search(r"\d", seg.text):
+                continue
+            folded_seg = self._fold(seg.text)
+            # Label lines ("Tên đơn vị (Company's name):", "Tổng tiền:",
+            # "Mã số thuế:") are structure, never the shop name.
+            if (
+                self._label_score(self.LABELS["seller"], seg.text) is not None
+                or self._label_score(self.LABELS["buyer"], seg.text) is not None
+                or _TAXID_LABEL_LINE.search(seg.text)
+                or _MONEY_LABEL_HINT.search(folded_seg)
+                or self._is_summary_line(seg.text)
+            ):
+                continue
+            name_segs.append(seg)
+        if not name_segs:
+            return None
+        seg_text = " ".join(seg.text for seg in name_segs)
+        if not re.search(r"[A-Za-zÀ-ỹ]", seg_text):
+            return None
+        folded = self._fold(seg_text)
+        if _TITLE_LINE.search(folded):
+            return None  # document titles are not shop names
+        hints = sum(1 for hint in _BUSINESS_HINTS if hint in folded)
+        letters = [c for c in seg_text if c.isalpha()]
+        words = [w for w in seg_text.split() if re.search(r"[A-Za-zÀ-ỹ]", w)]
+        # Column-header vocabulary is structure, never a shop name
+        # ("(No.) (Description) (Unit) (Quantity) (Unit price) (Amount)").
+        header_roles: set[str] = set()
+        for token in name_segs:
+            header_roles |= self._role_keyword_match(token.text)
+        if len(header_roles) >= 2 or "desc" in header_roles:
+            return None
+        if hints == 0:
+            uppers = sum(1 for c in letters if c.isupper()) if letters else 0.0
+            if not (letters and uppers / len(letters) >= 0.9 and len(letters) >= 6 and len(words) >= 3):
+                # Without a business hint only a clearly shouting multi-word
+                # name qualifies ("CƠM NIÊU AN NHIÊN"), not "Số HD:" labels.
+                return None
+        return seg_text, name_segs, self._business_score(seg_text)
+
     def _seller_from_header(self, lines: list[_Line], end: int) -> tuple[_Field, set[int]] | None:
         """Business-name inference for the merchant header block.
 
@@ -920,20 +1261,11 @@ class KIEExtractor:
             folded = self._fold(line.text)
             if any(h in folded for h in ("document", "receipt", "invoice", "cash bill", "cashier", "member", "salesperson")):
                 continue
-            name_segs: list[_Seg] = []
-            for seg in line.segs:
-                if self._label_score(self.LABELS["timestamp"], seg.text) is not None:
-                    continue
-                if re.search(r"\d", seg.text):
-                    continue
-                name_segs.append(seg)
-            if not name_segs:
+            inferred = self._seller_name_from_line(line)
+            if inferred is None:
                 continue
-            seg_text = " ".join(seg.text for seg in name_segs)
-            if not re.search(r"[A-Za-zÀ-ỹ]", seg_text):
-                continue
-            score = self._business_score(seg_text)
-            if score < 2.0:
+            seg_text, name_segs, score = inferred
+            if score < 1.0:
                 continue
             # The merchant header is the TOPMOST strong business line — deeper
             # company-looking lines (buyer blocks) must not win.
@@ -980,6 +1312,20 @@ class KIEExtractor:
             folded = self._fold(line.text)
             if any(h in folded for h in ("document", "receipt", "invoice", "cash bill", "cashier", "member", "gst", "tax", "vat", "mst", "date", "ngày", "ngay")):
                 continue
+            # Label lines ("Tên đơn vi (Company's name):") are structure —
+            # their 'company' hint must not count as a buyer name.
+            if (
+                self._label_score(self.LABELS["buyer"], line.text) is not None
+                or self._label_score(self.LABELS["seller"], line.text) is not None
+                or _TAXID_LABEL_LINE.search(line.text)
+                or _MONEY_LABEL_HINT.search(folded)
+            ):
+                continue
+            header_roles: set[str] = set()
+            for token in line.toks:
+                header_roles |= self._role_keyword_match(token.text)
+            if len(header_roles) >= 2 or "desc" in header_roles:
+                continue  # goods-table header row
             if re.search(r"\d", line.text) or _PHONE_LINE.search(line.text):
                 continue
             if self._business_score(line.text) < 2.0:
@@ -994,6 +1340,36 @@ class KIEExtractor:
                 "business_inference",
                 [t.idx for t in line.toks],
             )
+        return None
+
+    def _seller_from_footer(self, lines: list[_Line], start: int) -> tuple[_Field, set[int]] | None:
+        """Restaurant receipts print the shop name at the BOTTOM ("GAI GARDEN
+        COFFEE & TEA" under the totals). Scan the post-summary footer for the
+        topmost strong business line, skipping address/contact boilerplate."""
+        for index in range(max(0, start), len(lines)):
+            line = lines[index]
+            folded = self._fold(line.text)
+            if _PHONE_LINE.search(line.text) or self._label_score(self.LABELS["address"], line.text) is not None:
+                continue
+            if _TAXID_LABEL_LINE.search(line.text) or re.search(r"bank|wifi|cảm ơn|cam on|thank|chủ tài khoản|chu tai khoan", folded):
+                continue
+            if _TITLE_LINE.search(folded):
+                continue
+            inferred = self._seller_name_from_line(line)
+            if inferred is None:
+                continue
+            seg_text, name_segs, score = inferred
+            if score < 2.0:
+                continue
+            ocr_conf = min(t.conf for seg in name_segs for t in seg.toks)
+            fld = _Field(
+                normalize_text(seg_text),
+                ocr_conf,
+                round(min(1.0, ocr_conf * METHOD_WEIGHTS["business_inference"]), 3),
+                "business_inference",
+                [t.idx for seg in name_segs for t in seg.toks],
+            )
+            return fld, {index}
         return None
 
     # ------------------------------------------------------- run fields
@@ -1157,6 +1533,10 @@ class KIEExtractor:
             line = lines[index]
             if _PHONE_LINE.search(line.text):
                 continue
+            # "Tỷ giá 1CNY=3213VND, tk so 305621239840" is a note line; its
+            # 12-digit account number is not a tax id.
+            if re.search(r"(?:t[ưu]y\s*gi[áa]|tk\s*s[oô]|t[àa]i kho[ảa]n)", line.text, flags=re.IGNORECASE):
+                continue
             found = _TAXID_VALUE.search(line.text)
             if found:
                 ocr_conf = min(t.conf for t in line.toks)
@@ -1165,14 +1545,18 @@ class KIEExtractor:
 
     def _first_summary_line(self, lines: list[_Line]) -> int:
         for index, line in enumerate(lines):
+            # Document titles and label-only lines are not the money summary.
+            if _TITLE_LINE.search(self._fold(line.text)):
+                continue
+            if not any(_is_amountish(t.text) for t in line.toks):
+                continue
             if _TAXID_LABEL_LINE.search(line.text):
                 # "GST Reg No: 789417-W"/"MST: 0311234567" are identifier
-                # lines — their amount-ish tokens all match the tax-id value
-                # shape, so they must not start the money summary. A
-                # taxid-labeled line with a real amount ("Thuế VAT: 8.500")
-                # still does.
+                # lines — any taxid-shaped token marks them, so they must not
+                # start the money summary. A taxid-labeled line with only
+                # money values ("Thuế VAT: 8.500") still does.
                 amountish = [t.text for t in line.toks if _is_amountish(t.text)]
-                if not amountish or all(_TAXID_VALUE.search(v) for v in amountish):
+                if any(_TAXID_VALUE.search(v) for v in amountish):
                     continue
             if self._is_summary_line(line.text):
                 return index
@@ -1213,11 +1597,28 @@ class KIEExtractor:
             if inferred:
                 seller_fld, seller_used = inferred
                 seller_idx = min(seller_used) if seller_used else None
+        if seller_fld is None:
+            # Restaurant receipts print the shop name in the footer.
+            footer = self._seller_from_footer(lines, summary_start)
+            if footer:
+                seller_fld, seller_used = footer
+                seller_idx = min(seller_used) if seller_used else None
 
         # --- buyer --------------------------------------------------------
+        # VAT invoices carry both a person label ("Họ tên người mua hàng")
+        # and a company label ("Tên đơn vị"); the company is the invoice's
+        # buyer, so try company labels first and fall back to the generic
+        # set. Seller-labeled lines are excluded either way — "Đơn vị bán
+        # hàng" fuzzily matches "đơn vị mua" at exactly the 80.0 threshold.
         buyer_fld = self._extract_labeled_text(
-            lines, self.LABELS["buyer"], 0, summary_start, allowed_methods=("labeled_inline", "labeled_right", "labeled_below")
+            lines, self.LABELS["buyer_company"], 0, summary_start, allowed_methods=("labeled_inline", "labeled_right"),
+            exclude_regex=_SELLER_LINE_EXCLUDE,
         )
+        if buyer_fld is None:
+            buyer_fld = self._extract_labeled_text(
+                lines, self.LABELS["buyer"], 0, summary_start, allowed_methods=("labeled_inline", "labeled_right", "labeled_below"),
+                exclude_regex=_SELLER_LINE_EXCLUDE,
+            )
         buyer_idx: int | None = None
         if buyer_fld and buyer_fld.box_ids:
             buyer_idx = self._line_index_of(lines, buyer_fld.box_ids[0])
@@ -1250,8 +1651,23 @@ class KIEExtractor:
 
         # --- identifiers ----------------------------------------------------
         invoice_id_fld = self._extract_labeled_text(
-            lines, self.LABELS["invoice_id"], 0, summary_start, value_pattern=_ID_VALUE_PATTERN, allowed_methods=("labeled_inline", "labeled_right")
+            lines, self.LABELS["invoice_id"], 0, summary_start, value_pattern=_ID_VALUE_PATTERN, allowed_methods=("labeled_inline", "labeled_right"),
+            exclude_regex=_ID_LINE_EXCLUDE,
         )
+        # Vietnamese VAT triple: "Số" is the invoice number (invoice_id),
+        # "Ký hiệu" the printed series, "Mẫu số" the government form template.
+        invoice_series_fld = self._extract_labeled_text(
+            lines, self.LABELS["invoice_series"], 0, summary_start, value_pattern=_ID_VALUE_PATTERN, allowed_methods=("labeled_inline", "labeled_right"),
+            exclude_regex=_FORM_LINE_EXCLUDE,
+        )
+        invoice_form_fld = self._extract_labeled_text(
+            lines, self.LABELS["invoice_form"], 0, summary_start, value_pattern=_ID_VALUE_PATTERN, allowed_methods=("labeled_inline", "labeled_right"),
+            exclude_regex=_FORM_LINE_EXCLUDE,
+        )
+        if invoice_id_fld and invoice_series_fld and str(invoice_id_fld.value) == str(invoice_series_fld.value):
+            invoice_series_fld = None
+        if invoice_id_fld and invoice_form_fld and str(invoice_id_fld.value) == str(invoice_form_fld.value):
+            invoice_form_fld = None
         tax_id_fld = self._extract_labeled_text(
             lines, self.LABELS["tax_id"], 0, summary_start, value_pattern=_TAXID_VALUE, allowed_methods=("labeled_inline", "labeled_right")
         )
@@ -1279,6 +1695,7 @@ class KIEExtractor:
             start=summary_start,
             currency=currency_seen,
             exclude_labels=(("#taxid", self.LABELS["tax_id"]), ("#subtotal", self.LABELS["subtotal"])),
+            exclude_regex=_TAX_RATE_LINE,  # "Thuế suất GTGT: 10%" is a rate, not an amount
         )
         discount_fld = self._extract_money_field(lines, self.LABELS["discount"], start=summary_start, currency=currency_seen)
         total_fld = self._extract_money_field(
@@ -1293,6 +1710,8 @@ class KIEExtractor:
         )
         fields: dict[str, _Field | None] = {
             "invoice_id": invoice_id_fld,
+            "invoice_series": invoice_series_fld,
+            "invoice_form": invoice_form_fld,
             "seller": seller_fld,
             "buyer": buyer_fld,
             "address": address_fld,
@@ -1314,6 +1733,8 @@ class KIEExtractor:
 
         invoice = InvoiceData(
             invoice_id=text_of(invoice_id_fld),
+            invoice_series=text_of(invoice_series_fld),
+            invoice_form=text_of(invoice_form_fld),
             seller=text_of(seller_fld),
             buyer=text_of(buyer_fld),
             address=text_of(address_fld),

@@ -42,6 +42,8 @@ def initialize_database() -> None:
             "tax_id": "VARCHAR(64)",
             "buyer_tax_id": "VARCHAR(64)",
             "currency": "VARCHAR(8)",
+            "invoice_series": "VARCHAR(32)",
+            "invoice_form": "VARCHAR(32)",
         },
     }
     inspector = inspect(engine)

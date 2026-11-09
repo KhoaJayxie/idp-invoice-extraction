@@ -1,4 +1,47 @@
 {
+ "my_crosschannel": {
+  "seller": "CROSS CHANNEL NETWORK SDN. BHD.",
+  "buyer": null,
+  "address": "47, JALAN MERANTI 1, SEK. 3, BANDAR UTAMA BATANG KALI, 44300 BATANG KALI, SELANGOR.",
+  "buyer_address": null,
+  "tax_id": "001151500288",
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "currency": "MYR",
+  "subtotal": 5000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 0.0,
+  "timestamp": null,
+  "items": [
+   {
+    "name": "CABLE CLIPS @",
+    "quantity": 3.0,
+    "unit_price": 1666.67,
+    "amount": 5000.0
+   }
+  ]
+ },
+ "my_lightroom": {
+  "seller": null,
+  "buyer": null,
+  "address": null,
+  "buyer_address": null,
+  "tax_id": "000584089600",
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "currency": "MYR",
+  "subtotal": 68.87,
+  "tax": 4.13,
+  "discount": 0.0,
+  "total_cost": 73.0,
+  "timestamp": null,
+  "items": []
+ },
  "sroie_bookta": {
   "seller": "BOOK TA K (TAMAN DAYA) SDN BHD",
   "buyer": null,
@@ -7,6 +50,8 @@
   "tax_id": "789417-W",
   "buyer_tax_id": null,
   "invoice_id": "TD01167104",
+  "invoice_series": null,
+  "invoice_form": null,
   "currency": "MYR",
   "subtotal": 9.0,
   "tax": 0.0,
@@ -30,6 +75,8 @@
   "tax_id": "000800689824",
   "buyer_tax_id": null,
   "invoice_id": "CS00082258",
+  "invoice_series": null,
+  "invoice_form": null,
   "currency": "MYR",
   "subtotal": 411.5,
   "tax": 24.69,
@@ -75,6 +122,80 @@
    }
   ]
  },
+ "vat_blurred": {
+  "seller": null,
+  "buyer": null,
+  "address": null,
+  "buyer_address": null,
+  "tax_id": null,
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "currency": "VND",
+  "subtotal": 77212.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 77212.0,
+  "timestamp": "2023-06-26T00:00:00",
+  "items": [
+   {
+    "name": "VIETYIN RICE NOODLE 500GX40BAG",
+    "quantity": 500.0,
+    "unit_price": 77.6,
+    "amount": 38800.0
+   },
+   {
+    "name": "VIETYINFRESHVERMICELLI500GX40BAG Ty gia 1CNY=3213VND, tk so 305621239840",
+    "quantity": 495.0,
+    "unit_price": 77.6,
+    "amount": 38412.0
+   }
+  ]
+ },
+ "vat_convert_abc": {
+  "seller": "Công ty c phn ABC",
+  "buyer": "Công ty TNHH Bão Ngoc",
+  "address": "Tng 9 Technosoft, Duy Tân, Cu Giy, Hà Ni",
+  "buyer_address": "Da chi: 123 Trn Binh - Mai Dich - Cu Giáy - Hà Ni, Hinh thúrc thanh toán: TM/CK",
+  "tax_id": "0101243150",
+  "buyer_tax_id": null,
+  "invoice_id": "0000003",
+  "invoice_series": "HM/17E",
+  "invoice_form": "01GTKT0/001",
+  "currency": null,
+  "subtotal": 8000000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 8800000.0,
+  "timestamp": "2017-10-16T00:00:00",
+  "items": [
+   {
+    "name": "Tù lanh Hitachi 110 lít",
+    "quantity": 1.0,
+    "unit_price": 8000000.0,
+    "amount": 8000000.0
+   }
+  ]
+ },
+ "vat_efy_template": {
+  "seller": "CÔNG TY CÓ PHÁN CÔNG NGHE TIN HOC EFY VIET NAM",
+  "buyer": null,
+  "address": "Tàng 9, Tòa nhà Sannam, Só 78 phó Duy Tăn, P. Dich Vong Hău, Q. Câu Gáy, TP. Hà N Vt Nam",
+  "buyer_address": null,
+  "tax_id": null,
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "currency": null,
+  "subtotal": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 0.0,
+  "timestamp": null,
+  "items": []
+ },
  "vn_bookstore_1": {
   "seller": "NHÀ XUÃT BÁN HUYÊN THOAI",
   "buyer": "Công ty An Phú",
@@ -83,6 +204,8 @@
   "tax_id": null,
   "buyer_tax_id": null,
   "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
   "currency": "VND",
   "subtotal": 12000000.0,
   "tax": 0.0,
@@ -118,6 +241,8 @@
   "tax_id": null,
   "buyer_tax_id": null,
   "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
   "currency": "VND",
   "subtotal": 12000000.0,
   "tax": 0.0,
@@ -142,6 +267,92 @@
     "quantity": 1.0,
     "unit_price": 3000000.0,
     "amount": 3000000.0
+   }
+  ]
+ },
+ "vn_resto_comnieu": {
+  "seller": "COM NIÈU AN NHIEN",
+  "buyer": null,
+  "address": "Só 31B Nguyn Thái Hoo- TP. Hà Glar g, DT:0912.228.662",
+  "buyer_address": null,
+  "tax_id": null,
+  "buyer_tax_id": null,
+  "invoice_id": null,
+  "invoice_series": null,
+  "invoice_form": null,
+  "currency": null,
+  "subtotal": 355000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 355000.0,
+  "timestamp": "2023-01-17T00:00:00",
+  "items": [
+   {
+    "name": "Cn Niêu",
+    "quantity": 2.0,
+    "unit_price": 15000.0,
+    "amount": 30000.0
+   },
+   {
+    "name": "Lu'on Xào Sà Ót",
+    "quantity": 1.0,
+    "unit_price": 50000.0,
+    "amount": 150000.0
+   },
+   {
+    "name": "Thi: Trec Xào Cây Toi",
+    "quantity": 1.0,
+    "unit_price": 40000.0,
+    "amount": 140000.0
+   },
+   {
+    "name": "Carh cài gng",
+    "quantity": 1.0,
+    "unit_price": 35000.0,
+    "amount": 35030.0
+   }
+  ]
+ },
+ "vn_resto_gaigarden": {
+  "seller": null,
+  "buyer": null,
+  "address": null,
+  "buyer_address": null,
+  "tax_id": null,
+  "buyer_tax_id": null,
+  "invoice_id": "70104",
+  "invoice_series": null,
+  "invoice_form": null,
+  "currency": null,
+  "subtotal": 1916000.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total_cost": 1916000.0,
+  "timestamp": "2023-05-07T00:00:00",
+  "items": [
+   {
+    "name": "Nuóc sui nhò / Water small",
+    "quantity": 5.0,
+    "unit_price": 20000.0,
+    "amount": 100000.0
+   },
+   {
+    "name": "Set Com Gà",
+    "quantity": 1.0,
+    "unit_price": 850000.0,
+    "amount": 850000.0
+   },
+   {
+    "name": "Saigon (Lon)",
+    "quantity": 24.0,
+    "unit_price": 39000.0,
+    "amount": 936000.0
+   },
+   {
+    "name": "Mit",
+    "quantity": 1.0,
+    "unit_price": 30000.0,
+    "amount": 30000.0
    }
   ]
  }

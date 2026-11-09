@@ -1,0 +1,717 @@
+{
+ "source_image": "47e6f7632dcb4c18afb84b07482174e1_xuat-hoa-don-cho-cong-ty-nuoc-ngoai-7.jpg",
+ "processed_width": 847,
+ "processed_height": 1199,
+ "tokens": [
+  {
+   "text": "HÓA DON GIÁ TRI GIA TĂNG",
+   "box": [
+    256.0,
+    14.0,
+    590.0,
+    39.0
+   ],
+   "confidence": 0.969
+  },
+  {
+   "text": "Ký hiêu (Serial):",
+   "box": [
+    630.0,
+    15.0,
+    737.0,
+    32.0
+   ],
+   "confidence": 0.9207
+  },
+  {
+   "text": "Só (No.):",
+   "box": [
+    626.0,
+    33.0,
+    694.0,
+    63.0
+   ],
+   "confidence": 0.9497
+  },
+  {
+   "text": "(VAT INVOICE)",
+   "box": [
+    360.0,
+    44.0,
+    485.0,
+    65.0
+   ],
+   "confidence": 0.9989
+  },
+  {
+   "text": "Ban the hiên cua hóa don diên ti",
+   "box": [
+    315.0,
+    69.0,
+    528.0,
+    91.0
+   ],
+   "confidence": 0.8967
+  },
+  {
+   "text": "(Electronic invoice display)",
+   "box": [
+    343.0,
+    91.0,
+    504.0,
+    109.0
+   ],
+   "confidence": 0.9995
+  },
+  {
+   "text": "Ngày (date) 26 tháng (month) 06 năm (year) 2023",
+   "box": [
+    275.0,
+    116.0,
+    570.0,
+    134.0
+   ],
+   "confidence": 0.9441
+  },
+  {
+   "text": "Đon vi bán hàng (Seller):",
+   "box": [
+    15.0,
+    141.0,
+    190.0,
+    164.0
+   ],
+   "confidence": 0.9582
+  },
+  {
+   "text": "Mã sô thu (Tax code):",
+   "box": [
+    18.0,
+    169.0,
+    174.0,
+    190.0
+   ],
+   "confidence": 0.969
+  },
+  {
+   "text": "Đia chi (Address):",
+   "box": [
+    18.0,
+    199.0,
+    140.0,
+    216.0
+   ],
+   "confidence": 0.9572
+  },
+  {
+   "text": "Website:",
+   "box": [
+    575.0,
+    224.0,
+    642.0,
+    245.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "Email:",
+   "box": [
+    329.0,
+    225.0,
+    381.0,
+    244.0
+   ],
+   "confidence": 0.9992
+  },
+  {
+   "text": "Diên thoai (Tel):",
+   "box": [
+    19.0,
+    226.0,
+    130.0,
+    244.0
+   ],
+   "confidence": 0.9875
+  },
+  {
+   "text": "S tài khoān (Account No.):",
+   "box": [
+    16.0,
+    250.0,
+    207.0,
+    272.0
+   ],
+   "confidence": 0.9593
+  },
+  {
+   "text": "Ngân hàng (Bank): TMCP Công Thuong Viêt Nam (Viettinbank) - CN",
+   "box": [
+    331.0,
+    254.0,
+    821.0,
+    271.0
+   ],
+   "confidence": 0.9784
+  },
+  {
+   "text": "(VND)",
+   "box": [
+    214.0,
+    269.0,
+    265.0,
+    292.0
+   ],
+   "confidence": 0.9991
+  },
+  {
+   "text": "Bên Tre",
+   "box": [
+    468.0,
+    271.0,
+    529.0,
+    290.0
+   ],
+   "confidence": 0.9913
+  },
+  {
+   "text": "Ho tên nguòi mua hàng (Customer's name):",
+   "box": [
+    16.0,
+    298.0,
+    313.0,
+    321.0
+   ],
+   "confidence": 0.9751
+  },
+  {
+   "text": "Tên đon vi (Company's name):",
+   "box": [
+    16.0,
+    326.0,
+    224.0,
+    349.0
+   ],
+   "confidence": 0.9719
+  },
+  {
+   "text": "Mã s thu (Tax code):",
+   "box": [
+    16.0,
+    353.0,
+    174.0,
+    375.0
+   ],
+   "confidence": 0.9904
+  },
+  {
+   "text": "Đia chi (Address):",
+   "box": [
+    16.0,
+    382.0,
+    141.0,
+    403.0
+   ],
+   "confidence": 0.9899
+  },
+  {
+   "text": "Hinh thúre thanh toán (Payment method): CK",
+   "box": [
+    15.0,
+    407.0,
+    323.0,
+    431.0
+   ],
+   "confidence": 0.9598
+  },
+  {
+   "text": "Ghi chú (Note):",
+   "box": [
+    15.0,
+    434.0,
+    127.0,
+    460.0
+   ],
+   "confidence": 0.9962
+  },
+  {
+   "text": "Đon vį tính",
+   "box": [
+    458.0,
+    463.0,
+    536.0,
+    485.0
+   ],
+   "confidence": 0.8961
+  },
+  {
+   "text": "Só luong",
+   "box": [
+    541.0,
+    463.0,
+    604.0,
+    486.0
+   ],
+   "confidence": 0.8777
+  },
+  {
+   "text": "Thành tin",
+   "box": [
+    737.0,
+    463.0,
+    813.0,
+    485.0
+   ],
+   "confidence": 0.9498
+  },
+  {
+   "text": "STT",
+   "box": [
+    11.0,
+    465.0,
+    47.0,
+    485.0
+   ],
+   "confidence": 0.9998
+  },
+  {
+   "text": "Tên hàng hóa, dich vu",
+   "box": [
+    182.0,
+    465.0,
+    325.0,
+    486.0
+   ],
+   "confidence": 0.9733
+  },
+  {
+   "text": "Don giá",
+   "box": [
+    631.0,
+    465.0,
+    687.0,
+    483.0
+   ],
+   "confidence": 0.9685
+  },
+  {
+   "text": "(No.)",
+   "box": [
+    10.0,
+    485.0,
+    48.0,
+    508.0
+   ],
+   "confidence": 0.9995
+  },
+  {
+   "text": "(Unit)",
+   "box": [
+    475.0,
+    485.0,
+    519.0,
+    507.0
+   ],
+   "confidence": 0.9989
+  },
+  {
+   "text": "(Description)",
+   "box": [
+    210.0,
+    486.0,
+    295.0,
+    507.0
+   ],
+   "confidence": 0.9996
+  },
+  {
+   "text": "(Unit price)",
+   "box": [
+    621.0,
+    486.0,
+    697.0,
+    507.0
+   ],
+   "confidence": 0.9654
+  },
+  {
+   "text": "(Quantity)",
+   "box": [
+    541.0,
+    487.0,
+    605.0,
+    507.0
+   ],
+   "confidence": 0.9969
+  },
+  {
+   "text": "(Amount)",
+   "box": [
+    746.0,
+    487.0,
+    805.0,
+    506.0
+   ],
+   "confidence": 0.9997
+  },
+  {
+   "text": "3",
+   "box": [
+    489.0,
+    512.0,
+    505.0,
+    532.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "4",
+   "box": [
+    563.0,
+    512.0,
+    580.0,
+    532.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "5",
+   "box": [
+    652.0,
+    512.0,
+    668.0,
+    532.0
+   ],
+   "confidence": 0.9998
+  },
+  {
+   "text": "6=4x5",
+   "box": [
+    746.0,
+    512.0,
+    805.0,
+    531.0
+   ],
+   "confidence": 0.9989
+  },
+  {
+   "text": "1",
+   "box": [
+    21.0,
+    513.0,
+    37.0,
+    532.0
+   ],
+   "confidence": 0.9998
+  },
+  {
+   "text": "2",
+   "box": [
+    245.0,
+    513.0,
+    261.0,
+    531.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "500",
+   "box": [
+    575.0,
+    538.0,
+    605.0,
+    558.0
+   ],
+   "confidence": 0.9999
+  },
+  {
+   "text": "77,6",
+   "box": [
+    679.0,
+    538.0,
+    713.0,
+    561.0
+   ],
+   "confidence": 0.9988
+  },
+  {
+   "text": "38.800",
+   "box": [
+    789.0,
+    538.0,
+    836.0,
+    557.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "VIETYIN RICE NOODLE 500GX40BAG",
+   "box": [
+    52.0,
+    540.0,
+    306.0,
+    556.0
+   ],
+   "confidence": 0.9766
+  },
+  {
+   "text": "THUNG",
+   "box": [
+    469.0,
+    540.0,
+    527.0,
+    557.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "1",
+   "box": [
+    24.0,
+    541.0,
+    35.0,
+    556.0
+   ],
+   "confidence": 0.9998
+  },
+  {
+   "text": "2",
+   "box": [
+    20.0,
+    565.0,
+    37.0,
+    583.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "495",
+   "box": [
+    575.0,
+    565.0,
+    605.0,
+    585.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "77,6",
+   "box": [
+    679.0,
+    565.0,
+    713.0,
+    587.0
+   ],
+   "confidence": 0.999
+  },
+  {
+   "text": "38.412",
+   "box": [
+    789.0,
+    565.0,
+    836.0,
+    583.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "VIETYINFRESHVERMICELLI500GX40BAG",
+   "box": [
+    52.0,
+    566.0,
+    347.0,
+    582.0
+   ],
+   "confidence": 0.9992
+  },
+  {
+   "text": "THUNG",
+   "box": [
+    469.0,
+    566.0,
+    527.0,
+    583.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "Ty gia 1CNY=3213VND, tk so 305621239840",
+   "box": [
+    53.0,
+    592.0,
+    335.0,
+    609.0
+   ],
+   "confidence": 0.9606
+  },
+  {
+   "text": "Ks todnAnpha",
+   "box": [
+    559.0,
+    682.0,
+    678.0,
+    722.0
+   ],
+   "confidence": 0.8222
+  },
+  {
+   "text": "77.212",
+   "box": [
+    789.0,
+    747.0,
+    837.0,
+    769.0
+   ],
+   "confidence": 0.9999
+  },
+  {
+   "text": "Cong tièn hàng (Total amount):",
+   "box": [
+    518.0,
+    748.0,
+    711.0,
+    769.0
+   ],
+   "confidence": 0.9657
+  },
+  {
+   "text": "Thué sut GTGT (VAT rate): 0%",
+   "box": [
+    127.0,
+    773.0,
+    338.0,
+    796.0
+   ],
+   "confidence": 0.966
+  },
+  {
+   "text": "Tièn thué GTGT (VAT amount):",
+   "box": [
+    512.0,
+    773.0,
+    711.0,
+    796.0
+   ],
+   "confidence": 0.9573
+  },
+  {
+   "text": "0",
+   "box": [
+    821.0,
+    777.0,
+    837.0,
+    794.0
+   ],
+   "confidence": 0.9967
+  },
+  {
+   "text": "TÓNG CONG TIÈN THANH TOÁN (Total payment):",
+   "box": [
+    374.0,
+    799.0,
+    711.0,
+    823.0
+   ],
+   "confidence": 0.9751
+  },
+  {
+   "text": "77.212",
+   "box": [
+    789.0,
+    802.0,
+    836.0,
+    821.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "Só tièn viét bàng chr (ámount in wonds): Bày muoi báy nghin hai trăm muèi hai Nhân dân tê",
+   "box": [
+    9.0,
+    826.0,
+    566.0,
+    848.0
+   ],
+   "confidence": 0.904
+  },
+  {
+   "text": "Nguòi bán hàng (Seller)",
+   "box": [
+    547.0,
+    856.0,
+    712.0,
+    873.0
+   ],
+   "confidence": 0.9727
+  },
+  {
+   "text": "Nguòi mua hàng (Biyer)",
+   "box": [
+    130.0,
+    857.0,
+    300.0,
+    874.0
+   ],
+   "confidence": 0.9186
+  },
+  {
+   "text": "(Ký, ghi rõ ho tên)",
+   "box": [
+    154.0,
+    877.0,
+    276.0,
+    898.0
+   ],
+   "confidence": 0.9454
+  },
+  {
+   "text": "(Ký, ghi rõ ho tên)",
+   "box": [
+    570.0,
+    877.0,
+    691.0,
+    898.0
+   ],
+   "confidence": 0.9373
+  },
+  {
+   "text": "(Sign. full name)",
+   "box": [
+    160.0,
+    902.0,
+    271.0,
+    923.0
+   ],
+   "confidence": 0.9802
+  },
+  {
+   "text": "(Sign. full name)",
+   "box": [
+    573.0,
+    902.0,
+    686.0,
+    923.0
+   ],
+   "confidence": 0.9921
+  },
+  {
+   "text": "Dom vi cung cáp dch vu Hós dm dn tü: Tăp dodn Cöng nghigp - Viln thóng Qudn di (Viute), ST: 0100109106",
+   "box": [
+    184.0,
+    1158.0,
+    663.0,
+    1170.0
+   ],
+   "confidence": 0.7503
+  },
+  {
+   "text": "Tra ca h dm dn a tzi Webaize: hapu/nvoca.veneLalidesvoice-each. M sd bme MLL93COYV4P59H. M cla co quan th 0035FF95D9BD8C4154B62F163F2AE23FC8",
+   "box": [
+    24.0,
+    1168.0,
+    823.0,
+    1184.0
+   ],
+   "confidence": 0.6062
+  }
+ ]
+}

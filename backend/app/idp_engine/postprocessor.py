@@ -122,6 +122,9 @@ def normalize_datetime(value: str | datetime | None) -> datetime | None:
         hour = int(hour) % 12 + (12 if ampm.upper() == "P" else 0)
         replacement = f"{hour:02d}:{minute}" + (f":{second}" if second else "")
         text = text[: meridiem.start()] + replacement + text[meridiem.end() :]
+    # "17/01/2023 - 17:36": a dash between date and clock breaks the optional
+    # time group of every numeric pattern — fold it into a plain space.
+    text = re.sub(r"(\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4})\s*[-–]\s*(\d{1,2}:\d{2})", r"\1 \2", text)
     candidates = (
         "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H%M",
         "%Y-%m-%d", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M",
@@ -145,9 +148,23 @@ def normalize_datetime(value: str | datetime | None) -> datetime | None:
         except ValueError:
             return None
     # Vietnamese long form: "Ngày 16 tháng 6 năm 2025" (optionally with time).
-    # OCR may drop the diacritics ("ngay 16 thang 6 nam 2025").
+    # OCR may drop the diacritics ("ngay 16 thang 6 nam 2025") and VAT
+    # invoices interleave English labels in parentheses ("Ngày (date) 26
+    # tháng (month) 06 năm (year) 2023").
     match = re.search(
-        r"ng[àa]y\s+(\d{1,2})\s+th[áa]ng\s+(\d{1,2})\s+n[ăa]m\s+(20\d{2})(?:\s+(\d{1,2})[:h](\d{2}))?",
+        r"ng[àa]y\s*(?:\([^)]*\))?\s*(\d{1,2})\s*th[áàa]ng\s*(?:\([^)]*\))?\s*(\d{1,2})\s*n[ăaà]m\s*(?:\([^)]*\))?\s*(20\d{2})(?:\s+(?:[-–]\s+)?(\d{1,2})[:h](\d{2}))?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        day, month, year, hour, minute = match.groups()
+        try:
+            return datetime(int(year), int(month), int(day), int(hour or 0), int(minute or 0))
+        except ValueError:
+            return None
+    # Short Vietnamese month form: "07 thg 5, 2023" / "7 thg 10 2017".
+    match = re.search(
+        r"(?<!\d)(\d{1,2})\s*thg\s*(\d{1,2})\s*,?\s*(20\d{2})(?:\s+(\d{1,2})[:h](\d{2}))?",
         text,
         flags=re.IGNORECASE,
     )

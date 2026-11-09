@@ -1,0 +1,847 @@
+{
+ "source_image": "13c6e453dbaa4524af7a1e941a47f3f4_1794117748473_4565988928609748123_4565988928609748123_a4959f6be0d80a60cbc224fe25.jpg",
+ "processed_width": 639,
+ "processed_height": 894,
+ "tokens": [
+  {
+   "text": "Mău s6: 01GTKT0/001",
+   "box": [
+    476.0,
+    10.0,
+    594.0,
+    24.0
+   ],
+   "confidence": 0.9121
+  },
+  {
+   "text": "HÓA DON GIÁ TRI GIA TÄNG",
+   "box": [
+    210.0,
+    11.0,
+    412.0,
+    25.0
+   ],
+   "confidence": 0.947
+  },
+  {
+   "text": "EFY",
+   "box": [
+    37.0,
+    26.0,
+    85.0,
+    51.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "Ký hièu: EY/17E",
+   "box": [
+    476.0,
+    26.0,
+    562.0,
+    40.0
+   ],
+   "confidence": 0.9275
+  },
+  {
+   "text": "(VATINVOICE)",
+   "box": [
+    259.0,
+    29.0,
+    362.0,
+    46.0
+   ],
+   "confidence": 0.9992
+  },
+  {
+   "text": "Só:0000000",
+   "box": [
+    475.0,
+    41.0,
+    555.0,
+    58.0
+   ],
+   "confidence": 0.9318
+  },
+  {
+   "text": "VIET NAM",
+   "box": [
+    36.0,
+    45.0,
+    87.0,
+    70.0
+   ],
+   "confidence": 0.9682
+  },
+  {
+   "text": "Ngày (date)",
+   "box": [
+    191.0,
+    58.0,
+    249.0,
+    75.0
+   ],
+   "confidence": 0.8736
+  },
+  {
+   "text": "tháng (month)",
+   "box": [
+    264.0,
+    58.0,
+    335.0,
+    75.0
+   ],
+   "confidence": 0.9908
+  },
+  {
+   "text": "năm (year)",
+   "box": [
+    350.0,
+    59.0,
+    405.0,
+    76.0
+   ],
+   "confidence": 0.9962
+  },
+  {
+   "text": "MAKE SUCCCS5 ALL TOGETHER",
+   "box": [
+    4.0,
+    75.0,
+    120.0,
+    88.0
+   ],
+   "confidence": 0.9036
+  },
+  {
+   "text": "Đon vi bán hàng CÔNG TY CÓ PHÁN CÔNG NGHE TIN HOC EFY VIET NAM",
+   "box": [
+    6.0,
+    96.0,
+    390.0,
+    110.0
+   ],
+   "confidence": 0.9461
+  },
+  {
+   "text": "Mã só thué: 01 025190 41",
+   "box": [
+    6.0,
+    111.0,
+    138.0,
+    125.0
+   ],
+   "confidence": 0.8807
+  },
+  {
+   "text": "Đia chi: Tàng 9, Tòa nhà Sannam, Só 78 phó Duy Tăn, P. Dich Vong Hău, Q. Câu Gáy, TP. Hà N Vt Nam",
+   "box": [
+    4.0,
+    124.0,
+    519.0,
+    141.0
+   ],
+   "confidence": 0.9314
+  },
+  {
+   "text": "Dièn thoai 02462872290",
+   "box": [
+    6.0,
+    144.0,
+    127.0,
+    158.0
+   ],
+   "confidence": 0.9928
+  },
+  {
+   "text": "Email: contact@efy.comvn |Website:",
+   "box": [
+    6.0,
+    161.0,
+    190.0,
+    174.0
+   ],
+   "confidence": 0.9604
+  },
+  {
+   "text": "Ho tên nguòi mua hàng(Customer's name):",
+   "box": [
+    4.0,
+    202.0,
+    201.0,
+    216.0
+   ],
+   "confidence": 0.9603
+  },
+  {
+   "text": "Tên đon vi (Compay):",
+   "box": [
+    4.0,
+    216.0,
+    111.0,
+    232.0
+   ],
+   "confidence": 0.9053
+  },
+  {
+   "text": "Mã só thas (Tax code):",
+   "box": [
+    1.0,
+    229.0,
+    109.0,
+    248.0
+   ],
+   "confidence": 0.8512
+  },
+  {
+   "text": "Đia chi(Address):",
+   "box": [
+    3.0,
+    246.0,
+    87.0,
+    260.0
+   ],
+   "confidence": 0.9635
+  },
+  {
+   "text": "Só tài khoăn (Bank Account number): xrLabel56",
+   "box": [
+    234.0,
+    260.0,
+    448.0,
+    274.0
+   ],
+   "confidence": 0.9236
+  },
+  {
+   "text": "Hinh thúc thanh toán (Payment method):",
+   "box": [
+    4.0,
+    261.0,
+    185.0,
+    275.0
+   ],
+   "confidence": 0.97
+  },
+  {
+   "text": "Sō",
+   "box": [
+    424.0,
+    279.0,
+    443.0,
+    296.0
+   ],
+   "confidence": 0.7457
+  },
+  {
+   "text": "Don vi",
+   "box": [
+    329.0,
+    280.0,
+    368.0,
+    295.0
+   ],
+   "confidence": 0.8888
+  },
+  {
+   "text": "Thành tiên",
+   "box": [
+    559.0,
+    280.0,
+    618.0,
+    294.0
+   ],
+   "confidence": 0.9276
+  },
+  {
+   "text": "Thu",
+   "box": [
+    374.0,
+    281.0,
+    407.0,
+    296.0
+   ],
+   "confidence": 0.9997
+  },
+  {
+   "text": "STT",
+   "box": [
+    4.0,
+    285.0,
+    34.0,
+    305.0
+   ],
+   "confidence": 0.9983
+  },
+  {
+   "text": "Tên hàng hóa, dich vų",
+   "box": [
+    127.0,
+    286.0,
+    243.0,
+    304.0
+   ],
+   "confidence": 0.9242
+  },
+  {
+   "text": "Đon giá",
+   "box": [
+    473.0,
+    287.0,
+    520.0,
+    305.0
+   ],
+   "confidence": 0.9243
+  },
+  {
+   "text": "chua có thué",
+   "box": [
+    553.0,
+    292.0,
+    622.0,
+    309.0
+   ],
+   "confidence": 0.9923
+  },
+  {
+   "text": "tinh",
+   "box": [
+    334.0,
+    293.0,
+    363.0,
+    309.0
+   ],
+   "confidence": 0.998
+  },
+  {
+   "text": "suát",
+   "box": [
+    375.0,
+    294.0,
+    404.0,
+    309.0
+   ],
+   "confidence": 0.8847
+  },
+  {
+   "text": "lurong",
+   "box": [
+    416.0,
+    294.0,
+    451.0,
+    309.0
+   ],
+   "confidence": 0.8433
+  },
+  {
+   "text": "(Item)",
+   "box": [
+    5.0,
+    308.0,
+    35.0,
+    323.0
+   ],
+   "confidence": 0.998
+  },
+  {
+   "text": "(Description)",
+   "box": [
+    157.0,
+    308.0,
+    215.0,
+    322.0
+   ],
+   "confidence": 0.9763
+  },
+  {
+   "text": "(Unit)",
+   "box": [
+    334.0,
+    308.0,
+    364.0,
+    323.0
+   ],
+   "confidence": 0.978
+  },
+  {
+   "text": "(VATrate)",
+   "box": [
+    368.0,
+    308.0,
+    414.0,
+    322.0
+   ],
+   "confidence": 0.9675
+  },
+  {
+   "text": "(Unit Price)",
+   "box": [
+    471.0,
+    308.0,
+    522.0,
+    322.0
+   ],
+   "confidence": 0.9485
+  },
+  {
+   "text": "Quantin",
+   "box": [
+    414.0,
+    309.0,
+    456.0,
+    323.0
+   ],
+   "confidence": 0.9331
+  },
+  {
+   "text": "(Amoun",
+   "box": [
+    567.0,
+    309.0,
+    610.0,
+    324.0
+   ],
+   "confidence": 0.9748
+  },
+  {
+   "text": "2",
+   "box": [
+    177.0,
+    324.0,
+    194.0,
+    342.0
+   ],
+   "confidence": 0.9999
+  },
+  {
+   "text": "5",
+   "box": [
+    426.0,
+    324.0,
+    443.0,
+    342.0
+   ],
+   "confidence": 0.9991
+  },
+  {
+   "text": "7=5x6",
+   "box": [
+    563.0,
+    324.0,
+    612.0,
+    342.0
+   ],
+   "confidence": 0.9733
+  },
+  {
+   "text": "1",
+   "box": [
+    13.0,
+    325.0,
+    26.0,
+    342.0
+   ],
+   "confidence": 0.9986
+  },
+  {
+   "text": "4",
+   "box": [
+    383.0,
+    325.0,
+    397.0,
+    341.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "6",
+   "box": [
+    489.0,
+    325.0,
+    503.0,
+    341.0
+   ],
+   "confidence": 0.9999
+  },
+  {
+   "text": "3",
+   "box": [
+    341.0,
+    326.0,
+    355.0,
+    341.0
+   ],
+   "confidence": 1.0
+  },
+  {
+   "text": "EF",
+   "box": [
+    277.0,
+    423.0,
+    330.0,
+    453.0
+   ],
+   "confidence": 0.9977
+  },
+  {
+   "text": "Tông hop",
+   "box": [
+    41.0,
+    605.0,
+    95.0,
+    623.0
+   ],
+   "confidence": 0.8495
+  },
+  {
+   "text": "Thuê sut",
+   "box": [
+    169.0,
+    608.0,
+    223.0,
+    622.0
+   ],
+   "confidence": 0.9223
+  },
+  {
+   "text": "Tri giá chua có thuê GTGT",
+   "box": [
+    226.0,
+    608.0,
+    366.0,
+    622.0
+   ],
+   "confidence": 0.9612
+  },
+  {
+   "text": "Tiên thuê GTGT",
+   "box": [
+    367.0,
+    608.0,
+    454.0,
+    622.0
+   ],
+   "confidence": 0.9851
+  },
+  {
+   "text": "Tri giá thanh toán",
+   "box": [
+    505.0,
+    608.0,
+    601.0,
+    622.0
+   ],
+   "confidence": 0.9863
+  },
+  {
+   "text": "(In summary)",
+   "box": [
+    39.0,
+    622.0,
+    102.0,
+    639.0
+   ],
+   "confidence": 0.9842
+  },
+  {
+   "text": "(VAT amount)",
+   "box": [
+    379.0,
+    622.0,
+    445.0,
+    639.0
+   ],
+   "confidence": 0.9728
+  },
+  {
+   "text": "(Amount including VAT)",
+   "box": [
+    497.0,
+    622.0,
+    604.0,
+    636.0
+   ],
+   "confidence": 0.9771
+  },
+  {
+   "text": "(VAT rate)",
+   "box": [
+    169.0,
+    623.0,
+    218.0,
+    638.0
+   ],
+   "confidence": 0.9923
+  },
+  {
+   "text": "(Amount excluding VAT)",
+   "box": [
+    242.0,
+    624.0,
+    348.0,
+    637.0
+   ],
+   "confidence": 0.9883
+  },
+  {
+   "text": "Háng hóa không chju thué GTGT:",
+   "box": [
+    4.0,
+    641.0,
+    165.0,
+    655.0
+   ],
+   "confidence": 0.9428
+  },
+  {
+   "text": "2",
+   "box": [
+    188.0,
+    643.0,
+    201.0,
+    656.0
+   ],
+   "confidence": 0.2508
+  },
+  {
+   "text": "Háng hóa chiu thué suát",
+   "box": [
+    4.0,
+    660.0,
+    120.0,
+    673.0
+   ],
+   "confidence": 0.9505
+  },
+  {
+   "text": "0%",
+   "box": [
+    184.0,
+    660.0,
+    209.0,
+    676.0
+   ],
+   "confidence": 0.9977
+  },
+  {
+   "text": "Háng hóa chiu thuè suát",
+   "box": [
+    4.0,
+    678.0,
+    120.0,
+    692.0
+   ],
+   "confidence": 0.8527
+  },
+  {
+   "text": "5%",
+   "box": [
+    184.0,
+    679.0,
+    209.0,
+    695.0
+   ],
+   "confidence": 0.9998
+  },
+  {
+   "text": "10%",
+   "box": [
+    182.0,
+    696.0,
+    211.0,
+    712.0
+   ],
+   "confidence": 0.9998
+  },
+  {
+   "text": "Háng hóa chiu thué suát:",
+   "box": [
+    4.0,
+    697.0,
+    121.0,
+    711.0
+   ],
+   "confidence": 0.9149
+  },
+  {
+   "text": "Tóng còng tièn thanh toán:",
+   "box": [
+    4.0,
+    717.0,
+    130.0,
+    731.0
+   ],
+   "confidence": 0.9347
+  },
+  {
+   "text": "Só tièn viét băng chù",
+   "box": [
+    3.0,
+    736.0,
+    106.0,
+    750.0
+   ],
+   "confidence": 0.9183
+  },
+  {
+   "text": "Nguòi thuc hiên chuvên đôi (Converter)",
+   "box": [
+    9.0,
+    751.0,
+    204.0,
+    765.0
+   ],
+   "confidence": 0.8756
+  },
+  {
+   "text": "Nguòi bán hàng (Seller)",
+   "box": [
+    493.0,
+    752.0,
+    612.0,
+    766.0
+   ],
+   "confidence": 0.966
+  },
+  {
+   "text": "Nguòi mua hàng (Buyer)",
+   "box": [
+    296.0,
+    753.0,
+    420.0,
+    767.0
+   ],
+   "confidence": 0.9131
+  },
+  {
+   "text": "(Ký, ghi rő ho tén)",
+   "box": [
+    515.0,
+    768.0,
+    599.0,
+    785.0
+   ],
+   "confidence": 0.9155
+  },
+  {
+   "text": "(Ký, ghi rő ho tén)",
+   "box": [
+    67.0,
+    769.0,
+    148.0,
+    783.0
+   ],
+   "confidence": 0.9353
+  },
+  {
+   "text": "(Ký, ghi rő ho tén)",
+   "box": [
+    324.0,
+    770.0,
+    405.0,
+    784.0
+   ],
+   "confidence": 0.871
+  },
+  {
+   "text": "(Sign & full name)",
+   "box": [
+    66.0,
+    782.0,
+    150.0,
+    799.0
+   ],
+   "confidence": 0.9969
+  },
+  {
+   "text": "(Sign & full name)",
+   "box": [
+    323.0,
+    784.0,
+    406.0,
+    798.0
+   ],
+   "confidence": 0.9925
+  },
+  {
+   "text": "(Sign & full name)",
+   "box": [
+    516.0,
+    784.0,
+    597.0,
+    798.0
+   ],
+   "confidence": 0.9939
+  },
+  {
+   "text": "HÓA DON MÃU",
+   "box": [
+    260.0,
+    817.0,
+    386.0,
+    837.0
+   ],
+   "confidence": 0.9023
+  },
+  {
+   "text": "Signatare valid",
+   "box": [
+    435.0,
+    826.0,
+    511.0,
+    841.0
+   ],
+   "confidence": 0.9473
+  },
+  {
+   "text": "CÔNGTYCOPHANCÔNGNGHÈTIN",
+   "box": [
+    476.0,
+    838.0,
+    622.0,
+    851.0
+   ],
+   "confidence": 0.918
+  },
+  {
+   "text": "No",
+   "box": [
+    439.0,
+    842.0,
+    452.0,
+    850.0
+   ],
+   "confidence": 0.9751
+  },
+  {
+   "text": "HOCEFYVIÊTNAM",
+   "box": [
+    478.0,
+    848.0,
+    557.0,
+    861.0
+   ],
+   "confidence": 0.95
+  },
+  {
+   "text": "Ngay kj",
+   "box": [
+    438.0,
+    857.0,
+    475.0,
+    872.0
+   ],
+   "confidence": 0.8308
+  },
+  {
+   "text": "(Căn kièm tra, đói chièu khi lăp, giao dich hóa đon)",
+   "box": [
+    212.0,
+    878.0,
+    430.0,
+    891.0
+   ],
+   "confidence": 0.9102
+  }
+ ]
+}

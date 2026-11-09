@@ -27,6 +27,8 @@ class LineItem(BaseModel):
 
 class InvoiceData(BaseModel):
     invoice_id: str | None = None
+    invoice_series: str | None = None
+    invoice_form: str | None = None
     seller: str | None = None
     buyer: str | None = None
     address: str | None = None
@@ -58,6 +60,8 @@ class InvoiceCreate(InvoiceData):
 
 class InvoiceUpdate(BaseModel):
     invoice_id: str | None = None
+    invoice_series: str | None = None
+    invoice_form: str | None = None
     seller: str | None = None
     buyer: str | None = None
     address: str | None = None
