@@ -9,10 +9,11 @@ from ..schemas.invoice import InvoiceData
 
 
 class VLMExtractor:
-    """Structured-output adapters for OpenAI Vision and Gemini.
+    """Structured-output adapters: OpenAI Vision, Gemini, and a LOCAL
+    Qwen2.5-VL (no API key, runs on this machine's GPU).
 
-    The provider boundary is deliberately small so a local Qwen2.5-VL adapter or
-    a mocked client can be injected in tests without changing the pipeline.
+    The provider boundary is deliberately small so a local adapter or a
+    mocked client can be injected in tests without changing the pipeline.
     """
 
     def __init__(
@@ -26,6 +27,9 @@ class VLMExtractor:
         self.api_key = api_key
         self.model = model
         self.client = client
+        # Local adapter is constructed lazily on first use — building the
+        # object is cheap (no torch import), loading the model is not.
+        self._local: Any = None
 
     def extract(self, image_path: str | Path) -> tuple[InvoiceData, list[dict], str]:
         path = Path(image_path)
@@ -33,6 +37,9 @@ class VLMExtractor:
             raise RuntimeError(f"Không tìm thấy ảnh cho VLM: {path}")
         if self.provider == "mock":
             return InvoiceData(), [], ""
+        if self.provider == "local":
+            # (data, boxes, raw_text) — same tuple shape as the cloud adapters.
+            return self._ensure_local().extract(path)
         if not self.api_key:
             raise RuntimeError(f"VLM provider {self.provider!r} cần API key.")
         if self.provider == "openai":
@@ -41,10 +48,46 @@ class VLMExtractor:
             payload = self._extract_gemini(path)
         else:
             raise RuntimeError(
-                f"VLM provider {self.provider!r} chưa được hỗ trợ; dùng mock, openai hoặc gemini."
+                f"VLM provider {self.provider!r} chưa được hỗ trợ; dùng mock, local, openai hoặc gemini."
             )
         data = self.parse_structured(payload)
         return data, [], json.dumps(data.model_dump(mode="json"), ensure_ascii=False)
+
+    def _ensure_local(self):
+        if self._local is None:
+            from ..config import get_settings
+            from .local_vlm import DEFAULT_MODEL_ID, LocalVLM
+
+            settings = get_settings()
+            self._local = LocalVLM(
+                model_id=settings.vlm_local_model or DEFAULT_MODEL_ID,
+                max_pixels=settings.vlm_max_pixels,
+                max_new_tokens=settings.vlm_max_new_tokens,
+                keep_loaded=settings.vlm_keep_loaded,
+                python_exe=settings.vlm_worker_python or None,
+            )
+        return self._local
+
+    def fallback_available(self) -> tuple[bool, str]:
+        """Cheap hybrid-fallback readiness probe (never loads a model)."""
+        if self.provider == "mock":
+            return False, "VLM_PROVIDER=mock (demo) — đặt IDP_VLM_PROVIDER=local để bật VLM cục bộ"
+        if self.provider == "local":
+            from ..config import get_settings
+
+            settings = get_settings()
+            if settings.vlm_worker_python and not Path(settings.vlm_worker_python).is_file():
+                return False, f"IDP_VLM_WORKER_PYTHON không tồn tại: {settings.vlm_worker_python}"
+            adapter = self._ensure_local()
+            ok, note = adapter.deps_available()
+            if not ok:
+                return False, note
+            if not adapter.model_cached():
+                return False, f"model chưa có trong cache — chạy: huggingface-cli download {adapter.model_id}"
+            return True, note
+        if self.provider in {"openai", "gemini", "google"}:
+            return (True, "") if self.api_key else (False, "thiếu API key")
+        return False, f"provider {self.provider!r} không hỗ trợ fallback"
 
     def _extract_openai(self, path: Path) -> str | dict[str, Any]:
         try:

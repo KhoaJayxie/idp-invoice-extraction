@@ -171,6 +171,16 @@ class ExtractionResponse(BaseModel):
     # strong the structural evidence was (label match, spatial fallback...),
     # deliberately separate from the raw OCR confidence above.
     field_details: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # --- Hybrid (P4) provenance — all optional so OCR+KIE mode is unchanged.
+    # True when the quality gate fired and a VLM fallback actually ran.
+    vlm_triggered: bool = False
+    # Why the quality gate asked for the VLM (missing fields, low confidence,
+    # failed validation...). Empty when the gate did not fire.
+    fallback_reasons: list[str] = Field(default_factory=list)
+    # field -> "kie" | "vlm" | "kie+vlm" | "none" provenance of the final value.
+    sources: dict[str, str] = Field(default_factory=dict)
+    # [{field, kie_value, vlm_value, chosen, chosen_source, resolved, reason}]
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PreviewResponse(BaseModel):

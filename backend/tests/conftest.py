@@ -26,10 +26,12 @@ def isolated_test_database(tmp_path_factory: pytest.TempPathFactory) -> Generato
     original_processed_dir = runtime.processed_dir
     original_use_paddle = runtime.use_paddle
     original_use_vietocr = runtime.use_vietocr
+    original_vlm_provider = runtime.vlm_provider
     runtime.upload_dir = tmp_path_factory.mktemp("uploads")
     runtime.processed_dir = tmp_path_factory.mktemp("processed")
     runtime.use_paddle = False
     runtime.use_vietocr = False
+    runtime.vlm_provider = "mock"
     _get_pipeline.cache_clear()
     engine = create_engine(
         "sqlite://",
@@ -54,4 +56,5 @@ def isolated_test_database(tmp_path_factory: pytest.TempPathFactory) -> Generato
     runtime.processed_dir = original_processed_dir
     runtime.use_paddle = original_use_paddle
     runtime.use_vietocr = original_use_vietocr
+    runtime.vlm_provider = original_vlm_provider
     _get_pipeline.cache_clear()

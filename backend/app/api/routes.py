@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..database import get_db
+from ..idp_engine.hybrid import HybridPipeline
 from ..idp_engine.pipeline import HeuristicPipeline, IDPPipeline, VLMPipeline
 from ..idp_engine.ocr_detector import OCRUnavailableError
 from ..idp_engine.preprocessor import ImagePreprocessor, PreprocessConfig, ImagePreprocessingError
@@ -142,13 +143,17 @@ def _to_out(row: Invoice) -> InvoiceOut:
 def _get_pipeline(mode: str) -> IDPPipeline:
     if mode == "vlm":
         return VLMPipeline(settings.vlm_provider, settings.openai_api_key or settings.gemini_api_key, settings.vlm_model)
+    if mode == "hybrid":
+        return HybridPipeline()
     return HeuristicPipeline()
 
 
 def _pipeline_for(mode: str | None) -> IDPPipeline:
     selected = (mode or settings.pipeline_mode).lower()
-    if selected not in {"heuristic", "vlm"}:
-        raise HTTPException(status_code=400, detail="mode phải là heuristic hoặc vlm.")
+    if selected == "ocr_kie":  # explicit alias of the default OCR+KIE mode
+        selected = "heuristic"
+    if selected not in {"heuristic", "vlm", "hybrid"}:
+        raise HTTPException(status_code=400, detail="mode phải là heuristic (ocr_kie), vlm hoặc hybrid.")
     return _get_pipeline(selected)
 
 
@@ -243,16 +248,38 @@ def ocr_status() -> dict:
 
     When PaddleOCR is enabled the first call may take tens of seconds while
     models initialize; the response distinguishes that state clearly so the
-    UI can explain why extraction is slower on the first run.
+    UI can explain why extraction is slower on the first run. The VLM block
+    reports hybrid-fallback readiness (cheap checks only — never loads the
+    model).
     """
     detector = _get_pipeline("heuristic").detector  # type: ignore[attr-defined]
+    vlm_available, vlm_reason = _hybrid_vlm_readiness()
     return {
         "use_paddle": settings.use_paddle,
         "use_vietocr": settings.use_vietocr,
         "strict": settings.ocr_strict,
         "engine": detector.status(),
         "warning": detector.backend_warning,
+        "vlm_provider": settings.vlm_provider,
+        "vlm_local_model": settings.vlm_local_model,
+        "vlm_available": vlm_available,
+        "vlm_unavailable_reason": vlm_reason,
     }
+
+
+def _hybrid_vlm_readiness() -> tuple[bool, str | None]:
+    """Cheap hybrid-fallback probe: config + deps + model cache, no warm-up."""
+    if (settings.vlm_provider or "mock").lower() == "mock":
+        return False, "IDP_VLM_PROVIDER=mock — đặt 'local' để bật VLM cục bộ"
+    from ..idp_engine.vlm_extractor import VLMExtractor
+
+    extractor = VLMExtractor(
+        settings.vlm_provider,
+        settings.openai_api_key or settings.gemini_api_key,
+        settings.vlm_model,
+    )
+    ok, reason = extractor.fallback_available()
+    return ok, reason
 
 
 @router.get("/invoices", response_model=list[InvoiceOut])

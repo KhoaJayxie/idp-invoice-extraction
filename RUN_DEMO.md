@@ -111,7 +111,57 @@ IDP_MAX_DECODED_PIXELS=40000000
 IDP_REVIEW_CONFIDENCE_THRESHOLD=0.85
 ```
 
-## 6. VLM structured output
+## 6. Hybrid — OCR + KIE + VLM cục bộ dự phòng (P4)
+
+Luồng đầy đủ: **Upload → Preprocessing → PaddleOCR GPU → Spatial KIE → Validation → Quality gate → VLM fallback (chỉ khi cần) → Reconciliation → Human review**.
+
+### Cài đặt (1 lần) — venv riêng cho VLM
+
+Windows không cho phép Paddle (cuDNN 9.9) và torch (cuDNN 9.10) chung một process — CUDA runtime DLL trùng tên sẽ làm bên import sau gãy. Vì vậy VLM chạy trong **venv + process riêng**:
+
+```powershell
+py -3.12 -m venv C:\Users\khoas\idp-invoice-extraction-main\.venv-vlm
+C:\Users\khoas\idp-invoice-extraction-main\.venv-vlm\Scripts\Activate.ps1
+pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128   # Blackwell sm_120
+pip install -r requirements-vlm.txt                                          # transformers + bitsandbytes
+huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct                         # ~7 GB vào HF cache (dùng chung)
+deactivate
+```
+
+Rồi trong `.env` (venv chính **không** cài torch): `IDP_VLM_PROVIDER=local` + `IDP_VLM_WORKER_PYTHON=C:\Users\khoas\idp-invoice-extraction-main\.venv-vlm\Scripts\python.exe`. Kiểm tra nhanh: chip "VLM dự phòng: sẵn sàng" trên UI hoặc `GET /api/ocr/status` → `vlm_available: true`. Adapter **không bao giờ tải model giữa request** — model phải có sẵn trong cache.
+
+### Cách chạy
+
+- UI: chọn **Hybrid · VLM dự phòng** trong dropdown Pipeline rồi nhấn Rút trích.
+- API: `POST /api/extract` với `mode=hybrid` (mode `ocr_kie` là bí danh của `heuristic`).
+
+### Quality gate — khi nào VLM chạy?
+
+VLM **chỉ** được gọi khi OCR+KIE chưa đủ tin: thiếu trường quan trọng (`seller/total_cost/timestamp`, cấu hình qua `IDP_HYBRID_CRITICAL_FIELDS`), kie_conf thấp, validation tổng tiền lỗi, không có dòng hàng, hoặc chỉ 1 dòng hàng khớp tổng (nghi gộp dòng). KIE sạch → **không tốn** thời gian VLM.
+
+### Reconciliation (KIE-first)
+
+- KIE đủ tin (kie_conf ≥ `IDP_HYBRID_MIN_KIE_CONFIDENCE`=0.75): **giữ KIE**, bất đồng VLM chỉ ghi nhận (resolved).
+- KIE yếu + VLM khác + VLM có bằng chứng (evidence trích từ ảnh): dùng VLM, đánh dấu **xung đột cần soát** → `NEEDS_REVIEW`.
+- Trường KIE thiếu: điền từ VLM (source `vlm`); VLM không có bằng chứng → bỏ.
+- Trường VLM **không bịa confidence** — provenance (nguồn + evidence) là tín hiệu cho reviewer.
+- Sau merge, validation chạy lại trên hóa đơn cuối.
+
+Response thêm: `vlm_triggered`, `fallback_reasons`, `sources` (kie/vlm/kie+vlm), `conflicts`; `field_details` có thêm `source` + `evidence`; `timings.vlm_ms`. UI hiển thị các mục này ở khối provenance dưới form.
+
+### VRAM trên RTX 5060 8 GB
+
+Paddle ~0.6 GB + Qwen 3B 4-bit (NF4 double-quant) ~2.5–3.5 GB + activation. OCR và VLM **chạy tuần tự** (không đồng thời). `IDP_VLM_MAX_PIXELS=1003520` (≈1 MP) giữ số visual token vừa phải; đặt `IDP_VLM_KEEP_LOADED=false` nếu cần nhả VRAM sau mỗi lần gọi. Lần gọi VLM đầu tiên sau khi khởi động sẽ load model (~10–30 s); các lần sau nhanh hơn nhiều.
+
+### Đánh giá Hybrid
+
+```powershell
+python scripts\evaluate_pipeline.py evaluation\fixtures\invoice_ground_truth.jsonl --mode hybrid
+```
+
+In thêm VLM fallback rate, VRAM peak/ảnh và ghi vào predictions JSONL. Baseline tham chiếu của OCR+KIE là **158/176 (89.8%)** trên 11 fixture KIE — không phải kết quả Hybrid.
+
+## 7. VLM structured output
 
 OpenAI:
 
@@ -133,7 +183,7 @@ IDP_VLM_MODEL=gemini-2.0-flash
 
 Provider chỉ được gọi khi chọn `vlm`; key không bao giờ commit vào git. Nếu provider chưa cài/configured, API trả lỗi rõ ràng thay vì giả vờ có kết quả.
 
-## 7. Chuyển database
+## 8. Chuyển database
 
 SQLite là mặc định. MySQL:
 
@@ -143,7 +193,7 @@ IDP_DATABASE_URL=mysql+pymysql://user:password@localhost:3306/idp_invoice
 
 PostgreSQL cần cài driver tương ứng, ví dụ `psycopg[binary]`, rồi đặt URL SQLAlchemy.
 
-## 8. Đánh giá
+## 9. Đánh giá
 
 ```powershell
 python evaluation\evaluate_metrics.py evaluation\fixtures\sample_predictions.jsonl
@@ -157,6 +207,6 @@ python scripts\evaluate_pipeline.py evaluation\fixtures\invoice_ground_truth.jso
 
 CER/WER được tính trên text đã chuẩn hóa Unicode; Entity F1 so sánh key-value sau canonicalization số/ngày, gồm cả micro và macro report.
 
-## 9. Fine-tuning
+## 10. Fine-tuning
 
 Mở `notebooks/train_finetune_guide.ipynb` để xem format dataset MC-OCR, split train/validation, crop sau detection, augmentation và skeleton fine-tune VietOCR/LayoutLMv3. Notebook là hướng dẫn, không tự tải model khi import.

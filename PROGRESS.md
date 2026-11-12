@@ -1,7 +1,75 @@
 # PROGRESS — Vietnamese Invoice IDP V2
 
-> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **10/11/2026**.
+> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **12/11/2026 (P4 Hybrid)**.
 > Mục đích: lần sau mở lại dự án là nắm ngay được đã làm gì, sửa ở đâu, số liệu ra sao và việc gì còn lại.
+
+## 0d. Cập nhật 11–12/11/2026 — P4: Hybrid OCR + KIE + VLM cục bộ (Qwen2.5-VL)
+
+**Kết quả**: pipeline Hybrid hoàn chỉnh chạy thật trên GPU (OCR `paddleocr·gpu`, VLM Qwen2.5-VL-3B 4-bit trong process riêng), 64/64 test pass, evaluation cả 2 mode trên cùng ground truth — **không regression, không bịa số liệu**.
+
+### Kiến trúc
+Luồng: `Upload → Preprocess → PaddleOCR GPU → Spatial KIE → Validation → Quality gate → VLM fallback (chỉ khi cần) → Reconciliation (KIE-first) → Re-validate → Human review`.
+
+- `backend/app/idp_engine/hybrid.py` (mới): `assess_quality()` — gate kích hoạt VLM khi thiếu trường quan trọng (`seller/total_cost/timestamp`), kie_conf thấp (<0.5), validation lỗi, không có items, hoặc 1 dòng hàng khớp tổng (nghi gộp dòng); `reconcile()` — KIE-first: KIE mạnh (kie_conf ≥ 0.75) **không bao giờ bị VLM đè** (bất đồng → conflict *resolved*, warning); KIE yếu + VLM khác + VLM có evidence → dùng VLM + conflict **unresolved → NEEDS_REVIEW**; trường thiếu → VLM điền (source `vlm`); field VLM **không bịa confidence** (pop khỏi field_confidence, provenance + evidence là tín hiệu duyệt); items: KIE giữ, VLM chỉ lấp grid rỗng + lọc item khả nghi (tên thuần số, tiền vô lý); `HybridPipeline` — ủy thác `HeuristicPipeline` cho bước 1–5 (OCR/KIE giữ nguyên 100%), merge provenance (`sources`, `conflicts`, `fallback_reasons`, `vlm_triggered`, `timings.vlm_ms`, `engine.vlm{device, vram_peak_mb}`), re-validate, force NEEDS_REVIEW khi còn conflict unresolved.
+- `backend/app/idp_engine/local_vlm.py` (mới): adapter Qwen2.5-VL; **coerce payload** thực dụng ("12.000.000đ" → 12000000 qua `normalize_money`, None→0 cho money, dict/list→string cho text) — model thật trả kiểu lỏng, schema vẫn bắt buộc; `parse_output` từ chối JSON rác (raise, không đoán).
+- `backend/app/idp_engine/vlm_worker.py` (mới) + **kiến trúc 2 venv / 2 process**: `paddlepaddle-gpu 3.4.0` (cuDNN 9.9) và `torch 2.8.0+cu128` (cuDNN 9.10) **không thể chung 1 process trên Windows** — DLL CUDA trùng tên (`cudnn64_9.dll`, `cublas64_12.dll`), bên import sau gãy WinError 127 (cả 2 chiều đều thử, đều gãy). Giải pháp: venv riêng `.venv-vlm` (torch + transformers 4.57 + torchvision 0.23 + bitsandbytes 0.50), worker là subprocess JSON-line (`stdin/stdout`), model **resident trong worker** giữa các lần gọi; API process không bao giờ import torch (modelscope — dependency của paddleocr — có `find_spec('torch')` guard nên venv chính không có torch là sạch). Model Qwen tải 1 lần vào HF cache dùng chung (`huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct`, ~7 GB); worker **từ chối tải model giữa request** (chỉ chạy từ cache).
+- `vlm_extractor.py`: provider `local` mới (openai/gemini giữ nguyên); `fallback_available()` probe rẻ (deps probe chạy trong subprocess, model phải có cache).
+- `routes.py`: mode `hybrid` (+ alias `ocr_kie`), `/api/ocr/status` thêm `vlm_provider/vlm_local_model/vlm_available/vlm_unavailable_reason` (không warm-up).
+- `config.py`: `IDP_VLM_PROVIDER|VLM_LOCAL_MODEL|VLM_WORKER_PYTHON|VLM_MAX_PIXELS(1003520≈1MP)|VLM_MAX_NEW_TOKENS(768)|VLM_KEEP_LOADED|HYBRID_CRITICAL_FIELDS|HYBRID_MIN_KIE_CONFIDENCE`.
+- Frontend: dropdown thêm "Hybrid · VLM dự phòng"; chip "VLM dự phòng: sẵn sàng/chưa cấu hình"; khối provenance (VLM đã chạy vì gì, trường nào từ VLM, KIE↔VLM khớp, xung đột nào cần soát); provenance lưu vào `raw_json` khi lưu hóa đơn + hiển thị lại khi mở lại.
+- `evaluate_pipeline.py`: `--mode hybrid` in **VLM fallback rate** + **VRAM peak** (đo trong worker) + ghi `sources/conflicts/fallback_reasons/vlm_triggered` vào predictions; ITEMS_COUNT/ITEMS_TOTAL chỉ so khi GT có.
+- `requirements-vlm.txt` (mới) + hướng dẫn cài venv riêng trong README/RUN_DEMO.
+
+### Số liệu đo thật (11–12/11/2026, RTX 5060 8GB, Py 3.12)
+- **Tests: 64/64 pass** (41 cũ + 23 mới: gate, reconciliation 7 kịch bản, parse/coerce VLM, hybrid pipeline stub 6 kịch bản, API hybrid + alias `ocr_kie`).
+- Smoke end-to-end (ảnh mẫu 1131×1600): OCR GPU ~1.0s (warm) → KIE 46ms → VLM **ON** → total 12.000.000 khớp; sources: `total_cost/buyer/currency/subtotal = kie+vlm` (VLM đọc khớp KIE), timestamp VLM đọc 12:00 vs KIE 00:00 → **giữ KIE** (conflict resolved), `status=VALIDATED`.
+- VLM latency: lần đầu sau khi mở server **~57s** (spawn worker + load model + generate); warm **~18.8s**/ảnh (3B 4-bit, ~1MP visual tokens, ≤768 token out). OCR+KIE không đổi.
+- **VRAM: peak 2805 MB** cho Qwen 4-bit (đo `torch.cuda.max_memory_allocated` trong worker) — cộng Paddle ~0.6GB vẫn an toàn trên 8GB; OCR/VLM luôn tuần tự.
+- Evaluation `invoice_ground_truth.jsonl` (2 ảnh, GT 5 trường): heuristic baseline **CER 0.3458 · Entity P=0.4286 R=0.60 F1=0.50** — hybrid **y hệt** (không regression): TIMESTAMP/SUBTOTAL/TOTAL_COST khớp; SELLER sai do OCR mất dấu font đậm (giới hạn đã biết, VLM cũng không cứu được font nghệ thuật này); TAX=0 không xuất (hệ bỏ giá trị 0 — như baseline). Prediction thêm BUYER/BUYER_ADDRESS/CURRENCY (đúng nhưng GT 2 ảnh chưa có key này → hạ micro-precision trên metric nhỏ). **VLM fallback rate 2/2** (seller kie_conf < 0.5). Kết luận trung thực: trên **scan sạch**, KIE đã đủ và Hybrid chỉ thêm xác nhận (kie+vlm) + chi phí ~19s; giá trị thật của Hybrid nằm ở ảnh xấu (mờ/nghiêng/mất vùng) — cần thu thập bộ ảnh như mục 6 để đo điểm khác biệt.
+
+### Sự cố đã gặp & cách xử lý (học được)
+1. paddle+torch chung process gãy DLL (WinError 127) cả 2 thứ tự import → tách venv + worker process (mục trên).
+2. pip uninstall torch để lại rác `torch\~ib\*.dll` bị khóa bởi process đang chạy → kill process python của project trước rồi xóa tay; `find_spec('torch')` trả namespace rác khiến modelscope vẫn import → gọn hết mới sạch.
+3. modelscope import torch chỉ khi torch **tồn tại** — venv chính không có torch là hết vấn đề (guard của nó nuốt được ImportError, không nuốt OSError).
+4. `AutoProcessor` Qwen2.5-VL cần **torchvision** (AutoVideoProcessor) → cài torchvision 0.23.0+cu128.
+5. Worker load lỗi giữa chừng (model OK, processor None) → worker giữ state dởm; đã sửa: load() atomic, fail → reset state.
+6. VLM trả "12.000.000đ" (string + đ) và dict cho string field → tầng coerce trong parse_output; schema vẫn là rào cản cuối (kết quả rác → raise → hybrid giữ KIE + warning, không bao giờ bịa).
+
+### Việc còn lại của P4
+- [ ] Thu thập ảnh hóa đơn mờ/nghiêng/poor-quality để đo hiệu quả VLM fallback trên dữ liệu khó (hiện 2 ảnh demo đều sạch nên hybrid ≡ baseline).
+- [ ] (Tùy chọn) Giảm `IDP_VLM_MAX_NEW_TOKENS` hoặc dùng `small` rec để rút ngắn VLM warm latency.
+- [ ] (Tùy chọn) Benchmark route: `scripts/benchmark_ocr.py` chưa đo phần VLM.
+
+---
+
+## 0c. Cập nhật 11/11/2026 — Cài đặt môi trường trên MÁY MỚI
+
+**Trạng thái máy mới**: Windows 11, Python **3.12.0** (global, `py -0p` chỉ có 3.12), GPU **RTX 5060 Laptop 8GB (8151 MiB)**, driver **621.14 / CUDA UMD 13.5** — đủ điều kiện cho wheel cu129.
+
+**Vị trí quan trọng (khác README)**:
+- Repo nằm ở thư mục con lồng nhau: `C:\Users\khoas\idp-invoice-extraction-main\idp-invoice-extraction-main\` ← **uvicorn phải chạy từ đây** (chỗ có `backend/`).
+- Venv nằm ở thư mục **ngoài**: `C:\Users\khoas\idp-invoice-extraction-main\.venv` — đã tạo sẵn, activate rồi `cd` vào thư mục trong.
+
+**Đã cài (11/11)**:
+- `requirements.txt` từ PyPI (FastAPI 0.162.4, uvicorn 0.54.0, SQLAlchemy 2.1.8, opencv-contrib-python 4.10.0.84, numpy 2.3.5, pytest 9.2.0…).
+- `paddleocr==3.7.0` từ PyPI (kéo `paddlex 3.7.2`, không tự kéo paddlepaddle CPU — đã kiểm tra metadata).
+- **Sự cố cv2**: gỡ `opencv-python-headless` sau khi contrib đã cài làm hỏng `cv2` (thiếu `__version__`) → sửa bằng `pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84`. **Ghi nhớ: luôn gỡ headless TRƯỚC khi cài contrib, hoặc cài lại contrib sau khi gỡ.**
+- **Sự cố index Paddle**: `paddlepaddle.org.cn` trả **502** toàn trang (bảo trì) vào ~12:30–13:30 ngày 11/11 → không tải được `paddlepaddle-gpu`. Cài tạm **`paddlepaddle 3.3.1` (CPU, PyPI)** để real mode vẫn chạy. Khi server hồi phục (~13:3x) wheel `paddlepaddle-gpu 3.4.0 (cu129)` đã tải và cài thành công kèm `nvidia-cudnn-cu12 9.9.0.52` (768 MB) + `nvidia-cublas-cu12 12.9.0.13` (553 MB) — bản CPU đã được gỡ thay bằng GPU (xem checklist bên dưới).
+- Model cache: `~\.paddlex\official_models\` đã có **PP-OCRv6 medium det+rec** (tải từ HuggingFace, ~135 MB). Không cần tải lại.
+- `.env` (tạo từ `.env.example`): `IDP_USE_PADDLE=true`, `IDP_PADDLE_DEVICE=auto`, `IDP_PADDLE_LANG=vi`, `PP-OCRv6/medium`, `IDP_OCR_STRICT=true`.
+
+**Đã xác minh trên máy mới**:
+- `pytest -q` → **41/41 pass**.
+- `python scripts\check_gpu_env.py` → chưa chạy lại sau khi có GPU wheel (lúc chạy sẽ ra CPU fallback vì paddle CPU).
+- Server `/health` OK, `/api/ocr/status` → `paddleocr · cpu · vi`.
+- **Extract thật** ảnh mẫu `data/uploads/7e1b36af…webp`: `status=VALIDATED`, total 12.000.000 khớp (`delta=0`), 39 tokens, timings **preprocess 271 ms / OCR 11.193 ms / KIE 52 ms** (CPU, đúng mức ~12 s trong bảng mục 4).
+
+**Việc còn lại của đợt cài đặt**:
+- [x] **HOÀN TẤT (11/11/2026 ~13:45)**: server Paddle hồi phục → retry nền tự tải `paddlepaddle-gpu==3.4.0` (cu129) + 8 gói `nvidia-*-cu12` (cudnn 9.9, cublas 12.9…); `pip uninstall -y paddlepaddle` (CPU) rồi `pip install --force-reinstall --no-deps --index-url .../cu129/ paddlepaddle-gpu==3.4.0` (wheel 1 GB từ cache). `check_gpu_env.py` **tất cả PASS** (compute capability 12.0, matmul OK, run_check OK, 3 model cached).
+- [x] **Benchmark GPU thật** (cùng ảnh mẫu): run cold 8.2s (warm-up kernel) → **run warm: preprocess+KIE ~293 ms, OCR 243 ms, tổng 536 ms** — khớp bảng mục 4 (~250-300 ms OCR), nhanh hơn CPU **~46 lần**. `/api/ocr/status` → `device: "gpu"`.
+- [ ] (Tùy chọn) torch cu128 + vietocr nếu cần so sánh.
+
+---
 
 ## 0b. Cập nhật 10/11/2026 — P3 refinement: VAT invoices + restaurant receipts (mục chính của đợt này)
 
@@ -98,7 +166,7 @@
 
 Hệ thống chạy được **OCR thật bằng PaddleOCR trên GPU** (RTX 5060 Laptop 8GB, CUDA 12.9, PP-OCRv6 medium, tiếng Việt + tiếng Anh), end-to-end extract → KIE → validation → lưu DB hoạt động, **41/41 test pass**, UI đã sửa đủ 4 lỗi ưu tiên (bbox sai vị trí, UI overflow, ảnh quá nhỏ, lỗi API/data), **KIE spatial 100% entity accuracy trên 4 fixture OCR thật**.
 
-## 2. Môi trường đã xác minh
+## 2. Môi trường đã xác minh (máy cũ — máy mới 11/11/2026 xem mục 0c)
 
 | Thành phần | Giá trị | Ghi chú |
 |---|---|---|

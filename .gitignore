@@ -22,6 +22,9 @@ data/processed/*
 evaluation/benchmarks/
 evaluation/predictions/
 
+# Local VLM worker runtime log (regenerated on demand)
+backend/app/idp_engine/_vlm_worker_stderr.log
+
 # Optional model weights
 models/*
 !models/.gitkeep

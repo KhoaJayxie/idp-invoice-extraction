@@ -15,9 +15,31 @@ class Settings(BaseSettings):
 
     app_name: str = "Vietnamese Invoice IDP"
     database_url: str = f"sqlite:///{(PROJECT_ROOT / 'data' / 'idp_invoice.db').as_posix()}"
-    pipeline_mode: Literal["heuristic", "vlm"] = "heuristic"
+    # heuristic = OCR + spatial KIE (alias "ocr_kie"); vlm = direct structured
+    # VLM; hybrid = OCR + KIE with a quality-gated local VLM fallback.
+    pipeline_mode: Literal["heuristic", "ocr_kie", "vlm", "hybrid"] = "heuristic"
     vlm_provider: str = "mock"
     vlm_model: str = "gpt-4o-mini"
+    # Local fallback VLM (Qwen2.5-VL). Runs on this machine's GPU when
+    # vlm_provider=local; the cloud ids stay in vlm_model.
+    vlm_local_model: str = "Qwen/Qwen2.5-VL-3B-Instruct"
+    # Python executable for the out-of-process VLM worker. On Windows,
+    # PaddlePaddle (cuDNN 9.9) and torch (cuDNN 9.10) cannot share one
+    # process — the CUDA runtime DLL names collide — so the worker runs in a
+    # SEPARATE interpreter/venv (e.g. .venv-vlm) that holds torch. Empty =
+    # sys.executable (only safe when the main venv has no torch installed).
+    vlm_worker_python: str = ""
+    # Cap on visual tokens: 1280*28*28 ≈ 1 MP keeps 8 GB VRAM safe while
+    # staying legible for invoice text.
+    vlm_max_pixels: int = 1_003_520
+    vlm_max_new_tokens: int = 768
+    # Keep the model resident between extractions for demo latency; set false
+    # to free VRAM whenever the VLM is idle.
+    vlm_keep_loaded: bool = True
+    # Hybrid fallback gate. Critical fields drive the missing/low-confidence
+    # triggers; keep a KIE field when its kie_conf >= this threshold.
+    hybrid_critical_fields: str = "seller,total_cost,timestamp"
+    hybrid_min_kie_confidence: float = 0.75
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
     use_paddle: bool = False

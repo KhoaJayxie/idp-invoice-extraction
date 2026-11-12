@@ -77,6 +77,7 @@
       chip.className = "ocr-engine-chip offline";
     }
     if (status.warning) chip.title = status.warning;
+    renderVlmStatus(status);
     // Real mode never reads sidecar text — say so instead of accepting input
     // that would silently be ignored.
     const sidecar = document.querySelector(".sidecar-settings");
@@ -88,6 +89,20 @@
         sidecar.removeAttribute("disabled");
         sidecar.removeAttribute("title");
       }
+    }
+  }
+
+  function renderVlmStatus(status) {
+    const chip = $("vlm-status");
+    if (!chip) return;
+    chip.hidden = false;
+    if (status.vlm_available) {
+      const model = (status.vlm_provider === "local" ? (status.vlm_local_model || "").split("/").pop() : status.vlm_provider) || "VLM";
+      chip.textContent = `VLM dự phòng: sẵn sàng · ${model}`;
+      chip.title = "Hybrid mode sẽ gọi VLM này khi OCR+KIE thiếu dữ liệu hoặc validation lỗi.";
+    } else {
+      chip.textContent = "VLM dự phòng: chưa cấu hình";
+      chip.title = status.vlm_unavailable_reason || "Đặt IDP_VLM_PROVIDER=local và tải model để bật.";
     }
   }
 
@@ -215,6 +230,7 @@
       updateConfidence(result.confidence);
       updateMetrics(result.preprocess);
       renderWarnings(result.warnings || []);
+      renderProvenance(result);
       renderOCRList();
       selectVariant("original");
       updateReviewStatus(result.status, result.confidence);
@@ -449,6 +465,42 @@
     warnings.forEach((message) => { const item = document.createElement("div"); item.className = "warning-item"; const mark = document.createElement("span"); mark.className = "warning-mark"; mark.textContent = "⚠"; const text = document.createElement("span"); text.textContent = message; item.append(mark, text); target.append(item); });
   }
 
+  // Hybrid provenance: VLM activation, per-field sources, KIE↔VLM conflicts.
+  function renderProvenance(result) {
+    const target = $("provenance");
+    if (!target) return;
+    target.replaceChildren();
+    const sources = result.sources || {};
+    const conflicts = result.conflicts || [];
+    const reasons = result.fallback_reasons || [];
+    const chips = [];
+    if (result.vlm_triggered) {
+      chips.push(`VLM dự phòng: ĐÃ CHẠY${reasons.length ? ` — ${reasons.join("; ")}` : ""}`);
+    } else if (reasons.length) {
+      chips.push(`VLM dự phòng: không chạy (${reasons.join("; ")})`);
+    }
+    const vlmFields = Object.entries(sources).filter(([, source]) => source === "vlm").map(([field]) => field);
+    const agreedFields = Object.entries(sources).filter(([, source]) => source === "kie+vlm").map(([field]) => field);
+    if (vlmFields.length) chips.push(`Trường lấy từ VLM: ${vlmFields.join(", ")}`);
+    if (agreedFields.length) chips.push(`KIE và VLM khớp nhau: ${agreedFields.join(", ")}`);
+    conflicts.forEach((conflict) => {
+      const state = conflict.resolved ? "đã xử lý" : "CẦN SOÁT";
+      chips.push(`Bất đồng ${conflict.field} (${state}): KIE “${conflict.kie_value}” vs VLM “${conflict.vlm_value}” → giữ ${String(conflict.chosen_source).toUpperCase()}`);
+    });
+    if (!chips.length) return;
+    chips.forEach((message) => {
+      const item = document.createElement("div");
+      item.className = "warning-item provenance-item";
+      const mark = document.createElement("span");
+      mark.className = "warning-mark";
+      mark.textContent = result.vlm_triggered ? "⚡" : "🔗";
+      const text = document.createElement("span");
+      text.textContent = message;
+      item.append(mark, text);
+      target.append(item);
+    });
+  }
+
   async function saveInvoice(event) {
     event.preventDefault();
     const payload = {
@@ -475,6 +527,11 @@
         raw_text: state.response.raw_text || "",
         boxes: state.response.boxes || state.boxes || [],
         field_confidence: (state.response.invoice && state.response.invoice.field_confidence) || {},
+        field_details: state.response.field_details || {},
+        sources: state.response.sources || {},
+        conflicts: state.response.conflicts || [],
+        fallback_reasons: state.response.fallback_reasons || [],
+        vlm_triggered: Boolean(state.response.vlm_triggered),
       } : null,
       preprocessing_json: state.response ? state.response.preprocess : null,
     };
@@ -489,7 +546,7 @@
   }
 
   function resetForm() {
-    $("invoice-form").reset(); state.items = []; state.invoiceId = null; renderItems(); updateConfidence(0); renderWarnings([]); updateMathCheck(); $("review-status").textContent = "Chưa có dữ liệu"; $("review-status").className = "status-pill status-neutral";
+    $("invoice-form").reset(); state.items = []; state.invoiceId = null; renderItems(); updateConfidence(0); renderWarnings([]); renderProvenance({}); updateMathCheck(); $("review-status").textContent = "Chưa có dữ liệu"; $("review-status").className = "status-pill status-neutral";
   }
 
   async function loadHistory() {
@@ -534,6 +591,12 @@
       fillForm(row, row.status);
       updateReviewStatus(row.status, row.confidence);
       renderWarnings([]);
+      renderProvenance({
+        vlm_triggered: (row.raw_json || {}).vlm_triggered,
+        fallback_reasons: (row.raw_json || {}).fallback_reasons || [],
+        sources: (row.raw_json || {}).sources || {},
+        conflicts: (row.raw_json || {}).conflicts || [],
+      });
       updateMetrics(row.preprocessing_json);
       // Boxes are stored in aligned-image coordinates; without the aligned
       // artifact they cannot be mapped onto the raw upload, so hide them
@@ -608,7 +671,11 @@
     ["subtotal", "tax", "discount", "total_cost"].forEach((id) => $(id).addEventListener("input", updateMathCheck));
     $("date-range").addEventListener("change", loadDashboard);
     $("refresh-dashboard").addEventListener("click", loadDashboard);
-    $("pipeline-mode").addEventListener("change", () => { if ($("pipeline-mode").value === "vlm") showToast("VLM cần cấu hình API key trong .env."); });
+    $("pipeline-mode").addEventListener("change", () => {
+      const mode = $("pipeline-mode").value;
+      if (mode === "vlm") showToast("VLM cần cấu hình API key trong .env (hoặc provider local).");
+      if (mode === "hybrid") showToast("Hybrid: chạy OCR+KIE trước; VLM cục bộ chỉ chạy khi thiếu dữ liệu/lỗi validation.");
+    });
   }
 
   // The action is placed beside the file controls only after the DOM exists.

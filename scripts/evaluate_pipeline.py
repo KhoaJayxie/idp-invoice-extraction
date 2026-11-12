@@ -29,6 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.config import get_settings  # noqa: E402
+from backend.app.idp_engine.hybrid import HybridPipeline  # noqa: E402
 from backend.app.idp_engine.pipeline import HeuristicPipeline, VLMPipeline  # noqa: E402
 from backend.app.schemas.invoice import PreprocessOptions  # noqa: E402
 from evaluation.evaluate_metrics import canonical_entity, evaluate  # noqa: E402
@@ -50,20 +51,29 @@ ENTITY_KEYS = {
 }
 
 
-def prediction_entities(invoice) -> dict[str, Any]:
+def prediction_entities(invoice, reference_entities: dict[str, Any] | None = None) -> dict[str, Any]:
     entities: dict[str, Any] = {}
     for entity_key, field in ENTITY_KEYS.items():
         value = getattr(invoice, field, None)
         if value in (None, "", 0, 0.0):
             continue
         entities[entity_key] = value.date().isoformat() if isinstance(value, datetime) else value
+    # Line-item metrics are only comparable when the ground truth defines
+    # them — otherwise they would silently score against nothing.
+    reference_entities = reference_entities or {}
+    if "ITEMS_COUNT" in reference_entities:
+        entities["ITEMS_COUNT"] = len(invoice.items or [])
+    if "ITEMS_TOTAL" in reference_entities:
+        total = round(sum((item.amount or item.quantity * item.unit_price) for item in (invoice.items or [])), 2)
+        if total:
+            entities["ITEMS_TOTAL"] = total
     return entities
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="IDP end-to-end evaluation on real images.")
     parser.add_argument("dataset", type=Path, help="JSONL with image paths and references.")
-    parser.add_argument("--mode", choices=["heuristic", "vlm"], default="heuristic")
+    parser.add_argument("--mode", choices=["heuristic", "ocr_kie", "vlm", "hybrid"], default="heuristic")
     parser.add_argument("--out", type=Path, default=None, help="Where to write predictions JSONL.")
     parser.add_argument("--root", type=Path, default=PROJECT_ROOT, help="Base dir for relative image paths.")
     args = parser.parse_args()
@@ -78,9 +88,14 @@ def main() -> int:
         print("Dataset is empty.")
         return 1
 
-    pipeline = HeuristicPipeline() if args.mode == "heuristic" else VLMPipeline(
-        settings.vlm_provider, settings.openai_api_key or settings.gemini_api_key, settings.vlm_model
-    )
+    if args.mode in {"heuristic", "ocr_kie"}:
+        pipeline = HeuristicPipeline()
+    elif args.mode == "vlm":
+        pipeline = VLMPipeline(
+            settings.vlm_provider, settings.openai_api_key or settings.gemini_api_key, settings.vlm_model
+        )
+    else:
+        pipeline = HybridPipeline()
     out_path = args.out or (
         PROJECT_ROOT / "evaluation" / "predictions"
         / f"predictions_{args.mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
@@ -88,6 +103,8 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     scored: list[dict[str, Any]] = []
+    vlm_runs = 0
+    hybrid_runs = 0
     with out_path.open("w", encoding="utf-8") as handle:
         for row in rows:
             image_value = row.get("image")
@@ -108,9 +125,22 @@ def main() -> int:
             except Exception as exc:
                 print(f"FAILED {image_path.name}: {exc}")
                 continue
+            entry_extra: dict[str, Any] = {}
+            if args.mode == "hybrid":
+                hybrid_runs += 1
+                vlm_runs += 1 if response.vlm_triggered else 0
+                vlm_engine = (response.engine or {}).get("vlm") or {}
+                entry_extra = {
+                    "vlm_triggered": response.vlm_triggered,
+                    "fallback_reasons": response.fallback_reasons,
+                    "conflicts": response.conflicts,
+                    "sources": response.sources,
+                }
+                if vlm_engine.get("last_vram_peak_mb") is not None:
+                    entry_extra["vram_peak_mb"] = vlm_engine["last_vram_peak_mb"]
             prediction = {
                 "text": response.raw_text,
-                "entities": prediction_entities(response.invoice),
+                "entities": prediction_entities(response.invoice, reference.get("entities", {})),
             }
             entry = {
                 "image": str(image_path),
@@ -120,6 +150,7 @@ def main() -> int:
                 "confidence": round(response.confidence, 4),
                 "timings": response.timings,
                 "engine": response.engine,
+                **entry_extra,
             }
             scored.append(entry)
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -132,6 +163,8 @@ def main() -> int:
                 f"{image_path.name}: status={response.status} conf={response.confidence:.3f} "
                 f"entities={len(prediction['entities'])} matched={matched} "
                 f"ocr={response.timings.get('ocr_ms')}ms"
+                + (f" vlm={'ON' if response.vlm_triggered else 'off'}"
+                   f" vram={entry_extra.get('vram_peak_mb', '?')}MB" if args.mode == "hybrid" else "")
             )
 
     metrics = evaluate(out_path)
@@ -144,6 +177,8 @@ def main() -> int:
         f"Entity  : P={entity['precision']:.4f} R={entity['recall']:.4f} "
         f"F1={entity['f1']:.4f} macroF1={entity['macro_f1']:.4f}"
     )
+    if args.mode == "hybrid" and hybrid_runs:
+        print(f"VLM fallback rate: {vlm_runs}/{hybrid_runs} = {vlm_runs / hybrid_runs:.2%}")
     print(f"predictions: {out_path}")
     return 0
 

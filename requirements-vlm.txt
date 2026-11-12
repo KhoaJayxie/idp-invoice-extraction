@@ -1,0 +1,28 @@
+# Hybrid P4: local VLM fallback stack (Qwen2.5-VL on Windows + RTX 50).
+#
+# IMPORTANT (Windows): PaddlePaddle (cuDNN 9.9) and torch (cuDNN 9.10) cannot
+# live in ONE process — the CUDA runtime DLL names collide and whichever
+# imports second fails. The VLM therefore runs in a SEPARATE venv + process:
+#
+#   1) Create the worker venv:
+#        py -3.12 -m venv .venv-vlm
+#        .venv-vlm\Scripts\Activate.ps1
+#   2) torch MUST come from the PyTorch cu128 index (Blackwell sm_120):
+#        pip install torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cu128
+#   3) Then the rest:
+#        pip install -r requirements-vlm.txt
+#   4) Preload the model once (shared user-level HF cache, no re-download):
+#        huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct
+#   5) Point the app at the worker interpreter in .env:
+#        IDP_VLM_WORKER_PYTHON=<abs path>\.venv-vlm\Scripts\python.exe
+#
+# The main app venv must NOT have torch installed. VRAM budget on the 8 GB
+# card: PaddleOCR ~0.6 GB + Qwen 4-bit ~2.5-3.5 GB; OCR and VLM always run
+# sequentially, never concurrently.
+
+transformers>=4.51,<5
+accelerate>=1.0
+bitsandbytes>=0.46
+# Worker imports the project schema module directly:
+pydantic>=2.7,<3
+pillow>=10.0

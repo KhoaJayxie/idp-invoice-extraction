@@ -38,4 +38,17 @@ def test_vlm_provider_requires_key_and_unknown_provider_is_clear(tmp_path: Path)
     with pytest.raises(RuntimeError, match="API key"):
         VLMExtractor("openai").extract(image)
     with pytest.raises(RuntimeError, match="chưa được hỗ trợ"):
-        VLMExtractor("local", "key").extract(image)
+        VLMExtractor("bogus", "key").extract(image)
+
+
+def test_vlm_local_provider_requires_cached_model(tmp_path: Path):
+    """The local adapter must never silently download gigabytes mid-request."""
+    from backend.app.idp_engine.local_vlm import LocalVLM, LocalVLMError
+
+    adapter = VLMExtractor("local", None)._ensure_local()
+    assert isinstance(adapter, LocalVLM)
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"stub")
+    if not adapter.model_cached():
+        with pytest.raises(LocalVLMError):
+            adapter.extract(image)
