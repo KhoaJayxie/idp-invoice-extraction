@@ -10,6 +10,8 @@ from .invoice import (
     PreprocessMetadata,
     PreprocessOptions,
     PreviewResponse,
+    ReviewAction,
+    ReviewActionOut,
     StatsResponse,
     ValidationResultSchema,
 )
@@ -26,6 +28,8 @@ __all__ = [
     "PreprocessMetadata",
     "PreprocessOptions",
     "PreviewResponse",
+    "ReviewAction",
+    "ReviewActionOut",
     "StatsResponse",
     "ValidationResultSchema",
 ]

@@ -1,7 +1,40 @@
 # PROGRESS — Vietnamese Invoice IDP V2
 
-> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **12/11/2026 (P4 Hybrid)**.
+> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **26/11/2026 (P5 Human-in-the-Loop)**.
 > Mục đích: lần sau mở lại dự án là nắm ngay được đã làm gì, sửa ở đâu, số liệu ra sao và việc gì còn lại.
+
+## 0e. Cập nhật 26/11/2026 — P5: Human-in-the-Loop review workflow
+
+**Trạng thái: HOÀN TẤT P5.** Không chuyển sang P6. Giữ nguyên pipeline OCR Paddle GPU, Spatial KIE và Hybrid/VLM P4; bổ sung lớp review nhẹ lên API, DB và frontend. Full suite hiện **66/66 test pass** (tăng từ 64/64 trước P5), `compileall` backend pass và `git diff --check` không có lỗi whitespace.
+
+### Kết quả chính
+
+- **Review status rõ ràng và tương thích**: thêm `NEEDS_REVIEW`, `VERIFIED`, `REJECTED`; giữ `VALIDATED` như alias đọc/ghi để không phá dữ liệu/API cũ. Có endpoint `POST /api/invoices/{id}/review` cho action xác minh/từ chối/cần kiểm tra, ghi `reviewed_at`, ghi chú và trạng thái trước đó.
+- **Bảo toàn AI prediction**: `original_prediction` được lưu riêng ngay khi tạo invoice và không bị ghi đè khi người dùng sửa. `correction_history` lưu các lần thay đổi dữ liệu và review action kèm timestamp, before/after, status và note. Có `GET /api/invoices/{id}/review-history`; dữ liệu trả về đầy đủ sau refresh.
+- **DB additive migration**: thêm `original_prediction`, `correction_history`, `reviewed_at` vào model Invoice và migration SQLite startup; không yêu cầu rewrite database hiện tại.
+- **API/schema**: `InvoiceOut` trả original prediction, correction history và reviewed timestamp; PUT invoice ghi correction audit khi đổi header/line items, đồng thời giữ field confidence/provenance/raw OCR hiện có.
+- **Frontend review**: thêm nút `Lưu chỉnh sửa`, `Xác minh`, `Từ chối`; hiển thị status pill cho cả ba trạng thái, ghi chú review, lịch sử hiệu chỉnh và lịch sử action. Line items vẫn chỉnh sửa/thêm/xóa được.
+- **Field-level review**: panel độ tin cậy theo trường đọc `field_details`, source KIE/VLM, method và box IDs; chọn field sẽ highlight ô form và vùng OCR tương ứng. Hover/click box cũng highlight field form tương ứng; warning/conflict/provenance Hybrid vẫn hiển thị.
+- **Ảnh review**: hoàn thiện `drawBoxes()` theo cùng coordinate space với ảnh aligned/processed, canvas nằm cùng zoom layer nên bbox, image và hit-test cùng scale khi zoom. Thêm zoom 100–400%, wheel zoom, pan bằng pointer khi zoom, reset zoom; chặn click trong image stage mở nhầm file picker.
+- **Smoke run**: server chạy được, `/health` trả 200, `/api/ocr/status` trả engine/provenance, `/api/extract` sidecar demo trả extraction response và artifact ảnh. Môi trường smoke dùng `IDP_USE_PADDLE=false` để không warm GPU trong kiểm tra nhanh.
+
+### Kiểm thử P5
+
+- `backend/tests/test_api.py`: thêm integration test tạo invoice → sửa field → kiểm tra original prediction không đổi → xác minh → refresh/retrieve → kiểm tra correction/review history; thêm test status review không nhận `VALIDATED` cho action mới.
+- **Kết quả cuối**: `pytest -q` → **66 passed**, 1 warning deprecation từ `pytest-asyncio`/Starlette `httpx` (không phải lỗi dự án).
+- `python -m compileall -q backend` → pass.
+- `git diff --check` → pass.
+- Browser automation pixel-level chưa chạy được trong môi trường này vì không có Chromium/Playwright/Node; drawBoxes đã được kiểm tra theo DOM/CSS transform và smoke API, nhưng chưa có screenshot headless cuối cùng.
+
+### Hạn chế còn lại sau P5
+
+1. Chưa có user/auth identity; correction history ghi timestamp và action note nhưng chưa có `reviewer_id`.
+2. `correction_history` đang là JSON append-only trong invoice row; production nhiều reviewer/volume lớn nên tách bảng audit chuẩn và dùng Alembic migration.
+3. Frontend chưa có browser E2E runner trong repo; cần bổ sung Playwright/Chromium để khóa pixel regression cho bbox, zoom/pan và responsive breakpoints.
+4. Bbox field-level hiện dựa trên `field_details.box_ids` do KIE cung cấp; giá trị VLM-only không có OCR box nên UI hiển thị provenance nhưng không thể trỏ tới vị trí ảnh tương ứng.
+5. Tập ảnh khó (mờ/nghiêng/cong) và benchmark Hybrid vẫn là việc P4 còn lại; P5 không thay đổi giới hạn OCR/VLM đó.
+
+---
 
 ## 0d. Cập nhật 11–12/11/2026 — P4: Hybrid OCR + KIE + VLM cục bộ (Qwen2.5-VL)
 

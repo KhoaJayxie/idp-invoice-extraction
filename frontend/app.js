@@ -14,6 +14,13 @@
     boxes: [],
     items: [],
     stats: null,
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    fieldDetails: {},
+    activeField: null,
+    isPanning: false,
+    panStart: null,
   };
 
   const money = (value) => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -121,7 +128,7 @@
     $("drop-input").addEventListener("change", (event) => acceptFile(event.target.files[0]));
     const zone = $("drop-zone");
     zone.addEventListener("click", (event) => {
-      if (event.target.closest("button, input, a")) return;
+      if (event.target.closest("button, input, a, #image-stage")) return;
       $("drop-input").click();
     });
     zone.addEventListener("keydown", (event) => {
@@ -138,6 +145,30 @@
     document.querySelectorAll(".segment").forEach((button) => button.addEventListener("click", () => selectVariant(button.dataset.variant)));
     $("image-stage").addEventListener("mousemove", showBoxAtPointer);
     $("image-stage").addEventListener("mouseleave", () => { $("box-tooltip").hidden = true; });
+    $("image-stage").addEventListener("wheel", (event) => {
+      if (!state.file && !state.previewSources.original) return;
+      event.preventDefault();
+      setZoom(state.zoom + (event.deltaY < 0 ? .1 : -.1), event.clientX, event.clientY);
+    }, { passive: false });
+    $("image-stage").addEventListener("pointerdown", (event) => {
+      if (state.zoom <= 1) return;
+      state.isPanning = true;
+      state.panStart = { x: event.clientX, y: event.clientY, panX: state.panX, panY: state.panY };
+      $("image-stage").setPointerCapture?.(event.pointerId);
+      $("image-stage").classList.add("panning");
+    });
+    $("image-stage").addEventListener("pointermove", (event) => {
+      if (!state.isPanning || !state.panStart) return;
+      state.panX = state.panStart.panX + event.clientX - state.panStart.x;
+      state.panY = state.panStart.panY + event.clientY - state.panStart.y;
+      applyZoom();
+    });
+    ["pointerup", "pointercancel"].forEach((name) => $("image-stage").addEventListener(name, () => {
+      state.isPanning = false; state.panStart = null; $("image-stage").classList.remove("panning");
+    }));
+    $("zoom-in").addEventListener("click", () => setZoom(state.zoom + .2));
+    $("zoom-out").addEventListener("click", () => setZoom(state.zoom - .2));
+    $("zoom-reset").addEventListener("click", () => { state.zoom = 1; state.panX = 0; state.panY = 0; applyZoom(); });
     window.addEventListener("resize", drawBoxes);
     // Redraw whenever the stage or image box changes size (panel reflow,
     // details toggles, font loading) so the overlay never drifts.
@@ -159,6 +190,12 @@
     state.previewMetadata = null;
     state.boxes = [];
     state.selectedBox = -1;
+    state.fieldDetails = {};
+    state.activeField = null;
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
+    applyZoom();
     if (state.localUrl) URL.revokeObjectURL(state.localUrl);
     state.localUrl = URL.createObjectURL(file);
     state.previewSources = { original: state.localUrl, enhanced: null, binary: null };
@@ -219,6 +256,7 @@
       state.response = result;
       state.previewMetadata = result.preprocess;
       state.boxes = result.boxes || [];
+      state.fieldDetails = result.field_details || {};
       state.invoiceId = null;
       state.previewSources = {
         // aligned is the geometric image used for OCR, so boxes remain exact.
@@ -259,7 +297,30 @@
     if (image.complete && image.naturalWidth) drawBoxes();
   }
 
-  // Geometry helper: rect of the *displayed image content* inside the stage.
+  function applyZoom() {
+    const layer = $("image-zoom-layer");
+    if (!layer) return;
+    layer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+    $("zoom-value").textContent = `${Math.round(state.zoom * 100)}%`;
+    $("image-stage").classList.toggle("zoomed", state.zoom > 1);
+    drawBoxes();
+  }
+
+  function setZoom(value, clientX = null, clientY = null) {
+    const next = Math.max(1, Math.min(4, Math.round(value * 10) / 10));
+    if (next === state.zoom) return;
+    // Keep the point under the cursor stable while scaling around the layer's
+    // center; this makes inspecting a small field feel natural.
+    if (clientX !== null && clientY !== null) {
+      const rect = $("image-stage").getBoundingClientRect();
+      const ratio = next / state.zoom - 1;
+      state.panX -= (clientX - rect.left - rect.width / 2 - state.panX) * ratio;
+      state.panY -= (clientY - rect.top - rect.height / 2 - state.panY) * ratio;
+    }
+    state.zoom = next;
+    applyZoom();
+  }
+
   // The <img> can be letterboxed by object-fit when we stretch it, so the
   // element rect is not always the content rect; boxes must map onto the
   // content, otherwise they drift off the text.
@@ -269,15 +330,14 @@
     if (!image.complete || !image.naturalWidth) return null;
     const rect = image.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) return null;
-    const containScale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
-    const contentWidth = image.naturalWidth * containScale;
-    const contentHeight = image.naturalHeight * containScale;
+    // getBoundingClientRect includes the zoom transform, so the natural
+    // dimensions map directly to the transformed image content.
     return {
       stageRect,
-      left: rect.left + (rect.width - contentWidth) / 2 - stageRect.left,
-      top: rect.top + (rect.height - contentHeight) / 2 - stageRect.top,
-      width: contentWidth,
-      height: contentHeight,
+      left: rect.left - stageRect.left,
+      top: rect.top - stageRect.top,
+      width: rect.width,
+      height: rect.height,
     };
   }
 
@@ -296,19 +356,23 @@
     const canvas = $("box-canvas");
     const frame = imageContentRect();
     if (!frame) { canvas.width = canvas.width; return; }
-    canvas.style.left = `${frame.left}px`;
-    canvas.style.top = `${frame.top}px`;
-    canvas.style.width = `${frame.width}px`;
-    canvas.style.height = `${frame.height}px`;
+    const image = $("receipt-image");
+    const imageWidth = image.offsetWidth;
+    const imageHeight = image.offsetHeight;
+    if (imageWidth < 2 || imageHeight < 2) { canvas.width = canvas.width; return; }
+    canvas.style.left = `${image.offsetLeft}px`;
+    canvas.style.top = `${image.offsetTop}px`;
+    canvas.style.width = `${imageWidth}px`;
+    canvas.style.height = `${imageHeight}px`;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.round(frame.width * dpr));
-    canvas.height = Math.max(1, Math.round(frame.height * dpr));
+    canvas.width = Math.max(1, Math.round(imageWidth * dpr));
+    canvas.height = Math.max(1, Math.round(imageHeight * dpr));
     const context = canvas.getContext("2d");
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.clearRect(0, 0, frame.width, frame.height);
+    context.clearRect(0, 0, imageWidth, imageHeight);
     const source = sourceDimensions();
-    const sx = frame.width / source.width;
-    const sy = frame.height / source.height;
+    const sx = imageWidth / source.width;
+    const sy = imageHeight / source.height;
     const palette = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
     state.boxes.forEach((item, index) => {
       if (!Array.isArray(item.box) || item.box.length < 4) return;
@@ -345,6 +409,8 @@
     const index = boxIndexAtEvent(event);
     if (index < 0) { $("box-tooltip").hidden = true; return; }
     state.selectedBox = index;
+    state.activeField = fieldForBox(index);
+    highlightFormField(state.activeField);
     drawBoxes();
     const item = state.boxes[index];
     const tooltip = $("box-tooltip");
@@ -368,11 +434,75 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ocr-token";
-      button.addEventListener("click", () => { state.selectedBox = index; drawBoxes(); button.scrollIntoView({ block: "nearest" }); });
+      button.addEventListener("click", () => selectBox(index));
       const text = document.createElement("span"); text.className = "ocr-token-text"; text.textContent = item.text || "(trống)";
       const label = document.createElement("span"); label.className = "ocr-token-label"; label.textContent = item.label || "OCR";
       const score = document.createElement("span"); score.className = "ocr-token-score"; score.textContent = percent(item.confidence);
       button.append(text, label, score); list.append(button);
+    });
+    renderFieldReview();
+  }
+
+  const FIELD_LABELS = {
+    invoice_id: "Mã hóa đơn", seller: "Đơn vị bán", address: "Địa chỉ",
+    tax_id: "MST người bán", buyer: "Khách hàng", buyer_address: "Địa chỉ khách hàng",
+    buyer_tax_id: "MST khách hàng", currency: "Tiền tệ", timestamp: "Ngày giờ",
+    subtotal: "Tạm tính", tax: "Thuế", discount: "Giảm giá", total_cost: "Tổng thanh toán",
+    items: "Dòng hàng hóa",
+  };
+
+  function fieldForBox(index) {
+    if (index < 0) return null;
+    return Object.entries(state.fieldDetails || {}).find(([, detail]) =>
+      Array.isArray(detail.box_ids) && detail.box_ids.some((boxId) => Number(boxId) === index)
+    )?.[0] || null;
+  }
+
+  function highlightFormField(field) {
+    document.querySelectorAll(".field.field-active").forEach((node) => node.classList.remove("field-active"));
+    $("items-wrap")?.classList.remove("review-target-active");
+    if (!field) return;
+    const input = $(field);
+    const wrapper = input?.closest(".field");
+    if (wrapper) wrapper.classList.add("field-active");
+    if (field === "items") $("items-wrap")?.classList.add("review-target-active");
+  }
+
+  function selectBox(index, field = null) {
+    state.selectedBox = index;
+    state.activeField = field || fieldForBox(index);
+    highlightFormField(state.activeField);
+    drawBoxes();
+    document.querySelectorAll(".ocr-token").forEach((node, nodeIndex) => node.classList.toggle("active", nodeIndex === index));
+    document.querySelectorAll(".field-review-row").forEach((node) => node.classList.toggle("active", node.dataset.field === state.activeField));
+    if (index >= 0) document.querySelectorAll(".ocr-token")[index]?.scrollIntoView({ block: "nearest" });
+  }
+
+  function renderFieldReview() {
+    const target = $("field-review-list");
+    if (!target) return;
+    target.replaceChildren();
+    const entries = Object.entries(state.fieldDetails || {});
+    if (!entries.length) { target.append(textNode("Thông tin trường sẽ hiện sau khi rút trích.")); return; }
+    entries.forEach(([field, detail]) => {
+      const row = document.createElement("button");
+      row.type = "button"; row.className = "field-review-row"; row.dataset.field = field;
+      const title = document.createElement("strong"); title.textContent = FIELD_LABELS[field] || field;
+      const value = document.createElement("span"); value.className = "field-review-value"; value.textContent = detail.value === undefined ? "—" : String(detail.value);
+      const meta = document.createElement("span"); meta.className = "field-review-meta";
+      const confidence = detail.kie_conf === null || detail.kie_conf === undefined ? "VLM · chưa chấm điểm" : `KIE ${percent(detail.kie_conf)}`;
+      const source = detail.source || (state.response?.sources || {})[field] || "kie";
+      meta.textContent = `${confidence} · ${source.toUpperCase()}${detail.method ? ` · ${detail.method}` : ""}`;
+      row.append(title, value, meta);
+      row.addEventListener("click", () => {
+        const ids = Array.isArray(detail.box_ids) ? detail.box_ids : [];
+        selectBox(ids.length ? Number(ids[0]) : -1, field);
+      });
+      row.addEventListener("mouseenter", () => {
+        const ids = Array.isArray(detail.box_ids) ? detail.box_ids : [];
+        selectBox(ids.length ? Number(ids[0]) : -1, field);
+      });
+      target.append(row);
     });
   }
 
@@ -405,9 +535,12 @@
 
   function updateReviewStatus(status, confidence) {
     const element = $("review-status");
-    element.textContent = status === "VALIDATED" ? "✓ Đã xác nhận" : "! Cần kiểm tra";
-    element.className = `status-pill ${status === "VALIDATED" ? "status-valid" : "status-review"}`;
+    const labels = { VERIFIED: "✓ Đã xác minh", VALIDATED: "✓ Đã xác nhận", REJECTED: "× Đã từ chối", NEEDS_REVIEW: "! Cần kiểm tra" };
+    const classes = { VERIFIED: "status-valid", VALIDATED: "status-valid", REJECTED: "status-rejected", NEEDS_REVIEW: "status-review" };
+    element.textContent = labels[status] || "! Cần kiểm tra";
+    element.className = `status-pill ${classes[status] || "status-review"}`;
     updateConfidence(confidence);
+    if ($("status")) $("status").value = status || "NEEDS_REVIEW";
   }
 
   function fillForm(invoice, status) {
@@ -419,6 +552,7 @@
     state.items = (invoice.items || []).map((item) => ({ ...item }));
     renderItems();
     updateMathCheck();
+    renderFieldReview();
   }
 
   function addItem(item = {}) {
@@ -523,6 +657,12 @@
       processed_image_url: state.response ? state.response.processed_image_url : null,
       binary_image_url: state.response ? state.response.binary_image_url : null,
       original_filename: state.response ? state.response.original_filename : null,
+      original_prediction: state.response ? (state.response.original_prediction || {
+        captured_at: new Date().toISOString(),
+        data: state.response.invoice || {},
+        boxes: state.response.boxes || state.boxes || [],
+        field_details: state.response.field_details || {},
+      }) : null,
       raw_json: state.response ? {
         raw_text: state.response.raw_text || "",
         boxes: state.response.boxes || state.boxes || [],
@@ -539,14 +679,75 @@
     try {
       const result = await api(state.invoiceId ? `/api/invoices/${state.invoiceId}` : "/api/invoices", { method: state.invoiceId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       state.invoiceId = result.id;
+      state.response = { ...(state.response || {}), ...result, invoice: result, field_details: (result.raw_json || {}).field_details || state.fieldDetails };
+      state.fieldDetails = state.response.field_details || {};
+      updateReviewStatus(result.status, result.confidence);
+      renderFieldReview();
+      renderReviewHistory(result.correction_history || []);
       showToast(`Đã lưu hóa đơn #${result.id}.`);
       await Promise.all([loadHistory(), loadDashboard()]);
     } catch (error) { showToast(error.message, true); }
     finally { button.disabled = false; }
   }
 
+  async function applyReview(status) {
+    if (!state.invoiceId) {
+      await saveInvoice({ preventDefault() {} });
+    }
+    if (!state.invoiceId) return;
+    const note = window.prompt(status === "REJECTED" ? "Lý do từ chối (tùy chọn):" : "Ghi chú duyệt (tùy chọn):", "");
+    if (note === null) return;
+    const button = status === "VERIFIED" ? $("verify-button") : $("reject-button");
+    if (button) button.disabled = true;
+    try {
+      const result = await api(`/api/invoices/${state.invoiceId}/review`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, note: note.trim() || null }),
+      });
+      updateReviewStatus(result.status, result.confidence);
+      state.response = { ...(state.response || {}), ...result, invoice: result };
+      renderReviewHistory(result.correction_history || []);
+      await Promise.all([loadHistory(), loadDashboard()]);
+      showToast(status === "VERIFIED" ? "Đã xác minh hóa đơn." : "Đã từ chối hóa đơn.");
+    } catch (error) { showToast(error.message, true); }
+    finally { if (button) button.disabled = false; }
+  }
+
+  function renderReviewHistory(history) {
+    const target = $("review-history");
+    if (!target) return;
+    target.replaceChildren();
+    if (!history || !history.length) { target.append(textNode("Chưa có lịch sử.")); return; }
+    history.slice().reverse().forEach((event) => {
+      const row = document.createElement("div"); row.className = "history-event";
+      const type = event.type === "review_action" ? `${event.status} · ${event.note || "Không có ghi chú"}` : "Đã hiệu chỉnh dữ liệu";
+      row.textContent = `${type} · ${formatDate(event.timestamp)}`;
+      target.append(row);
+    });
+  }
+
   function resetForm() {
-    $("invoice-form").reset(); state.items = []; state.invoiceId = null; renderItems(); updateConfidence(0); renderWarnings([]); renderProvenance({}); updateMathCheck(); $("review-status").textContent = "Chưa có dữ liệu"; $("review-status").className = "status-pill status-neutral";
+    $("invoice-form").reset();
+    state.items = [];
+    state.invoiceId = null;
+    state.response = null;
+    state.boxes = [];
+    state.fieldDetails = {};
+    state.activeField = null;
+    state.selectedBox = -1;
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
+    applyZoom();
+    renderItems();
+    renderOCRList();
+    renderReviewHistory([]);
+    updateConfidence(0);
+    renderWarnings([]);
+    renderProvenance({});
+    updateMathCheck();
+    $("review-status").textContent = "Chưa có dữ liệu";
+    $("review-status").className = "status-pill status-neutral";
   }
 
   async function loadHistory() {
@@ -558,7 +759,9 @@
         const button = document.createElement("button"); button.type = "button"; button.className = "history-row";
         const title = document.createElement("strong"); title.textContent = row.invoice_id || row.seller || `Hóa đơn #${row.id}`;
         const total = document.createElement("span"); total.textContent = money(row.total_cost);
-        const status = document.createElement("span"); status.className = "history-status"; status.textContent = `${row.status === "VALIDATED" ? "✓ Đã xác nhận" : "! Cần kiểm tra"} · ${formatDate(row.created_at)}`;
+        const status = document.createElement("span"); status.className = "history-status";
+        const statusLabels = { VERIFIED: "✓ Đã xác minh", VALIDATED: "✓ Đã xác nhận", REJECTED: "× Đã từ chối", NEEDS_REVIEW: "! Cần kiểm tra" };
+        status.textContent = `${statusLabels[row.status] || row.status} · ${formatDate(row.updated_at || row.created_at)}`;
         button.append(title, total, status); button.addEventListener("click", () => loadInvoice(row.id)); target.append(button);
       });
     } catch (error) { showToast(error.message, true); }
@@ -569,6 +772,7 @@
       const row = await api(`/api/invoices/${id}`);
       state.invoiceId = row.id;
       state.boxes = (row.raw_json && row.raw_json.boxes) || [];
+      state.fieldDetails = (row.raw_json && row.raw_json.field_details) || {};
       state.previewMetadata = row.preprocessing_json || null;
       state.response = {
         confidence: row.confidence,
@@ -582,6 +786,10 @@
         aligned_image_url: row.aligned_image_url,
         processed_image_url: row.processed_image_url,
         binary_image_url: row.binary_image_url,
+        original_prediction: row.original_prediction || {},
+        correction_history: row.correction_history || [],
+        sources: (row.raw_json || {}).sources || {},
+        conflicts: (row.raw_json || {}).conflicts || [],
       };
       state.previewSources = {
         original: row.aligned_image_url || row.source_image_url || null,
@@ -606,6 +814,7 @@
         state.response.boxes = [];
       }
       renderOCRList();
+      renderReviewHistory(row.correction_history || []);
       if (state.previewSources.original) {
         $("empty-upload").hidden = true;
         $("image-stage").hidden = false;
@@ -668,9 +877,18 @@
     $("invoice-form").addEventListener("submit", saveInvoice);
     $("add-item").addEventListener("click", () => addItem());
     $("reset-button").addEventListener("click", resetForm);
+    $("verify-button").addEventListener("click", () => applyReview("VERIFIED"));
+    $("reject-button").addEventListener("click", () => applyReview("REJECTED"));
     ["subtotal", "tax", "discount", "total_cost"].forEach((id) => $(id).addEventListener("input", updateMathCheck));
     $("date-range").addEventListener("change", loadDashboard);
     $("refresh-dashboard").addEventListener("click", loadDashboard);
+    ["seller", "invoice_id", "address", "tax_id", "buyer", "buyer_address", "buyer_tax_id", "currency", "timestamp", "subtotal", "tax", "discount", "total_cost"].forEach((field) => {
+      $(field)?.addEventListener("focus", () => {
+        const detail = state.fieldDetails[field];
+        const ids = detail && Array.isArray(detail.box_ids) ? detail.box_ids : [];
+        selectBox(ids.length ? Number(ids[0]) : -1, field);
+      });
+    });
     $("pipeline-mode").addEventListener("change", () => {
       const mode = $("pipeline-mode").value;
       if (mode === "vlm") showToast("VLM cần cấu hình API key trong .env (hoặc provider local).");

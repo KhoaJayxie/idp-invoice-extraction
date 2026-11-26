@@ -42,6 +42,11 @@ class Invoice(Base):
     original_filename: Mapped[str | None] = mapped_column(String(255))
     raw_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     preprocessing_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # AI output is immutable after extraction; raw_json contains the overlay
+    # and provenance, while this snapshot preserves the exact editable draft.
+    original_prediction: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    correction_history: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=list)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow

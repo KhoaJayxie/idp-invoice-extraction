@@ -44,6 +44,9 @@ def initialize_database() -> None:
             "currency": "VARCHAR(8)",
             "invoice_series": "VARCHAR(32)",
             "invoice_form": "VARCHAR(32)",
+            "original_prediction": "JSON",
+            "correction_history": "JSON",
+            "reviewed_at": "DATETIME",
         },
     }
     inspector = inspect(engine)

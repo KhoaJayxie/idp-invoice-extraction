@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+# VALIDATED is retained as a read/write compatibility alias for records created
+# before the human-review workflow. New review actions use VERIFIED explicitly.
+ReviewStatus = Literal["NEEDS_REVIEW", "VERIFIED", "REJECTED", "VALIDATED"]
+ActionStatus = Literal["NEEDS_REVIEW", "VERIFIED", "REJECTED"]
 
 
 class Box(BaseModel):
@@ -46,7 +52,7 @@ class InvoiceData(BaseModel):
 
 
 class InvoiceCreate(InvoiceData):
-    status: str = "NEEDS_REVIEW"
+    status: ReviewStatus = "NEEDS_REVIEW"
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     strategy: str | None = None
     source_image: str | None = None
@@ -56,6 +62,7 @@ class InvoiceCreate(InvoiceData):
     original_filename: str | None = None
     raw_json: dict[str, Any] | None = None
     preprocessing_json: dict[str, Any] | None = None
+    original_prediction: dict[str, Any] | None = None
 
 
 class InvoiceUpdate(BaseModel):
@@ -75,7 +82,7 @@ class InvoiceUpdate(BaseModel):
     discount: float | None = None
     total_cost: float | None = None
     items: list[LineItem] | None = None
-    status: str | None = None
+    status: ReviewStatus | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     strategy: str | None = None
     source_image: str | None = None
@@ -86,14 +93,29 @@ class InvoiceUpdate(BaseModel):
     raw_json: dict[str, Any] | None = None
     preprocessing_json: dict[str, Any] | None = None
     field_confidence: dict[str, float] | None = None
-
+    original_prediction: dict[str, Any] | None = None
 
 class InvoiceOut(InvoiceCreate):
     id: int
     source_image_url: str | None = None
+    original_prediction: dict[str, Any] = Field(default_factory=dict)
+    correction_history: list[dict[str, Any]] = Field(default_factory=list)
+    reviewed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class ReviewAction(BaseModel):
+    status: ActionStatus
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewActionOut(BaseModel):
+    id: int
+    status: ActionStatus
+    note: str | None = None
+    timestamp: datetime
 
 
 class MathCheck(BaseModel):

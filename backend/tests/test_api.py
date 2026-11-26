@@ -38,6 +38,46 @@ def test_health_and_preprocess_preview(client):
     assert body["metadata"]["processed_width"] > 0
 
 
+def test_review_workflow_preserves_prediction_and_records_history(client):
+    payload = {
+        "invoice_id": "AI-001",
+        "seller": "AI SHOP",
+        "total_cost": 100.0,
+        "status": "NEEDS_REVIEW",
+        "confidence": 0.62,
+        "items": [{"name": "Coffee", "quantity": 1, "unit_price": 100, "amount": 100, "confidence": 0.8}],
+        "raw_json": {"boxes": [{"text": "AI SHOP", "box": [1, 2, 30, 10]}], "field_details": {"seller": {"box_ids": [0], "kie_conf": 0.7}}},
+    }
+    created = client.post("/api/invoices", json=payload)
+    assert created.status_code == 201, created.text
+    invoice_id = created.json()["id"]
+    original = created.json()["original_prediction"]
+    assert original["data"]["seller"] == "AI SHOP"
+
+    updated = client.put(f"/api/invoices/{invoice_id}", json={"seller": "Human corrected shop"})
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["seller"] == "Human corrected shop"
+    assert body["original_prediction"] == original
+    assert any(event["type"] == "correction" for event in body["correction_history"])
+
+    reviewed = client.post(f"/api/invoices/{invoice_id}/review", json={"status": "VERIFIED", "note": "Đã đối chiếu bản gốc"})
+    assert reviewed.status_code == 200, reviewed.text
+    body = reviewed.json()
+    assert body["status"] == "VERIFIED"
+    assert body["reviewed_at"]
+    assert body["correction_history"][-1]["status"] == "VERIFIED"
+    assert client.get(f"/api/invoices/{invoice_id}").json()["status"] == "VERIFIED"
+    assert client.get(f"/api/invoices/{invoice_id}/review-history").json() == body["correction_history"]
+
+
+def test_review_action_rejects_invalid_status(client):
+    created = client.post("/api/invoices", json={"seller": "Shop", "status": "NEEDS_REVIEW"})
+    assert created.status_code == 201
+    response = client.post(f"/api/invoices/{created.json()['id']}/review", json={"status": "VALIDATED"})
+    assert response.status_code == 422
+
+
 def test_extract_returns_503_in_strict_real_mode_without_engine(client, monkeypatch):
     from backend.app.api import routes
 

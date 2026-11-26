@@ -30,6 +30,7 @@ from ..schemas import (
     LineItem,
     PreprocessOptions,
     PreviewResponse,
+    ReviewAction,
     StatsResponse,
 )
 
@@ -95,6 +96,50 @@ def _save_upload(raw: bytes, filename: str | None, ocr_text: str | None = None) 
     return target, original_filename
 
 
+def _prediction_snapshot(payload: InvoiceCreate) -> dict:
+    """Return an immutable, JSON-safe copy of the AI draft.
+
+    New clients may provide a richer snapshot (including OCR boxes and field
+    provenance). For older clients, capture the submitted extraction values so
+    later edits never destroy the first prediction.
+    """
+    if payload.original_prediction:
+        return payload.original_prediction
+    return {
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "data": payload.model_dump(mode="json", exclude={"original_prediction"}),
+    }
+
+
+def _invoice_snapshot(row: Invoice) -> dict:
+    """Serialize editable invoice values for correction-history diffs."""
+    values = {
+        key: getattr(row, key)
+        for key in (
+            "invoice_id", "invoice_series", "invoice_form", "seller", "buyer",
+            "address", "buyer_address", "tax_id", "buyer_tax_id", "currency",
+            "timestamp", "subtotal", "tax", "discount", "total_cost",
+        )
+    }
+    values["timestamp"] = values["timestamp"].isoformat() if values["timestamp"] else None
+    values["items"] = [
+        {
+            "name": item.name,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "amount": item.amount,
+        }
+        for item in row.items
+    ]
+    return values
+
+
+def _append_history(row: Invoice, event: dict) -> None:
+    history = list(row.correction_history or [])
+    history.append({"timestamp": datetime.now(timezone.utc).isoformat(), **event})
+    row.correction_history = history
+
+
 def _to_out(row: Invoice) -> InvoiceOut:
     return InvoiceOut(
         id=row.id,
@@ -134,6 +179,9 @@ def _to_out(row: Invoice) -> InvoiceOut:
         source_image_url=f"/api/uploads/{row.source_image}" if row.source_image else None,
         raw_json=row.raw_json,
         preprocessing_json=row.preprocessing_json,
+        original_prediction=row.original_prediction or {},
+        correction_history=row.correction_history or [],
+        reviewed_at=row.reviewed_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -306,7 +354,9 @@ def get_invoice(invoice_pk: int, db: Session = Depends(get_db)):
 
 @router.post("/invoices", response_model=InvoiceOut, status_code=201)
 def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
-    data = payload.model_dump(exclude={"items", "field_confidence"})
+    data = payload.model_dump(exclude={"items", "field_confidence", "original_prediction"})
+    data["original_prediction"] = _prediction_snapshot(payload)
+    data["correction_history"] = []
     data["raw_json"] = {**(data.get("raw_json") or {}), "field_confidence": payload.field_confidence}
     if data.get("preprocessing_json") is None:
         data.pop("preprocessing_json", None)
@@ -334,11 +384,18 @@ def update_invoice(invoice_pk: int, payload: InvoiceUpdate, db: Session = Depend
     row = db.query(Invoice).options(selectinload(Invoice.items)).filter(Invoice.id == invoice_pk).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    values = payload.model_dump(exclude_unset=True, exclude={"items", "field_confidence"})
+    before = _invoice_snapshot(row)
+    previous_status = row.status
+    values = payload.model_dump(
+        exclude_unset=True,
+        exclude={"items", "field_confidence", "original_prediction"},
+    )
     if "raw_json" in values and values["raw_json"] is None:
         values.pop("raw_json")
     for key, value in values.items():
         setattr(row, key, value)
+    if payload.original_prediction is not None and not row.original_prediction:
+        row.original_prediction = payload.original_prediction
     if payload.field_confidence is not None:
         raw = dict(row.raw_json or {})
         raw["field_confidence"] = payload.field_confidence
@@ -357,9 +414,44 @@ def update_invoice(invoice_pk: int, payload: InvoiceUpdate, db: Session = Depend
             )
             for index, item in enumerate(payload.items, 1)
         )
+    after = _invoice_snapshot(row)
+    if before != after:
+        _append_history(row, {"type": "correction", "before": before, "after": after})
+    if payload.status is not None and payload.status != previous_status:
+        _append_history(row, {"type": "status_change", "from_status": previous_status, "status": payload.status})
+        if payload.status in {"VERIFIED", "REJECTED"}:
+            row.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     db.refresh(row)
     return _to_out(row)
+
+
+@router.post("/invoices/{invoice_pk}/review", response_model=InvoiceOut)
+def review_invoice(invoice_pk: int, payload: ReviewAction, db: Session = Depends(get_db)):
+    """Apply an explicit human review decision and persist an audit event."""
+    row = db.query(Invoice).options(selectinload(Invoice.items)).filter(Invoice.id == invoice_pk).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    previous = row.status
+    row.status = payload.status
+    row.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    _append_history(row, {
+        "type": "review_action",
+        "from_status": previous,
+        "status": payload.status,
+        "note": payload.note,
+    })
+    db.commit()
+    db.refresh(row)
+    return _to_out(row)
+
+
+@router.get("/invoices/{invoice_pk}/review-history")
+def invoice_review_history(invoice_pk: int, db: Session = Depends(get_db)):
+    row = db.get(Invoice, invoice_pk)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return row.correction_history or []
 
 
 @router.delete("/invoices/{invoice_pk}", status_code=204)
@@ -407,7 +499,7 @@ def stats(
         total_spend=sum(float(row.total_cost or 0) for row in rows),
         total_tax=sum(float(row.tax or 0) for row in rows),
         needs_review=sum(row.status == "NEEDS_REVIEW" for row in rows),
-        validated=sum(row.status == "VALIDATED" for row in rows),
+        validated=sum(row.status in {"VALIDATED", "VERIFIED"} for row in rows),
         by_seller=sorted(by_seller.values(), key=lambda value: float(value["total"]), reverse=True),
         by_month=sorted(by_month.values(), key=lambda value: str(value["month"])),
     )
