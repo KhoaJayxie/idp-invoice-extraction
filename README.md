@@ -29,11 +29,15 @@ idp-invoice-extraction/
 │   └── idp_engine/
 ├── backend/tests/
 ├── evaluation/evaluate_metrics.py
+├── evaluation/benchmark_manifest.json
+├── evaluation/benchmark_runner.py
+├── dashboard.py                  # Streamlit dashboard P7
 ├── frontend/{index.html,app.js,styles.css}
 ├── notebooks/train_finetune_guide.ipynb
 ├── data/uploads/       # ảnh upload, tạo tự động
 ├── data/processed/     # ảnh sau preprocessing, tạo tự động
 ├── requirements.txt
+├── requirements-dashboard.txt    # dependency tùy chọn cho dashboard
 └── RUN_DEMO.md
 ```
 
@@ -117,9 +121,32 @@ Các dependency model nặng không nằm trong requirements mặc định để
 
 | Script | Mục đích |
 |---|---|
-| `scripts/check_gpu_env.py` | Kiểm tra chuỗi Python → Paddle → CUDA → GPU trước khi cài |
+| `scripts/check_gpu_env.py` | Kiểm tra chuỗi Python → Paddle/CUDA/NVIDIA trước khi cài |
 | `scripts/benchmark_ocr.py` | Đo thời gian OCR trên ảnh thật, xuất JSON vào `evaluation/benchmarks/` |
 | `scripts/evaluate_pipeline.py` | Chạy pipeline thật trên ground truth, tính CER/WER/Entity F1 |
+| `scripts/benchmark_evaluation.py` | Chạy benchmark P7 theo split, strategy, repeats; ghi provenance rõ ràng |
+| `evaluation/benchmark_runner.py` | Replay token OCR thật đã capture, tính field/entity/line-item metrics |
+| `dashboard.py` | Dashboard Streamlit lọc strategy/category/fixture, xem metrics và provenance |
+
+## P7 — Benchmark và dashboard
+
+Manifest P7 chia 11 fixture thành `dev` (4) và `test` holdout (7). Runner mặc định replay **OCR token dumps thật đã capture**, không gọi lại OCR và không được trình bày như một lần inference ảnh mới. VLM/Hybrid chỉ được báo `unavailable` nếu manifest không có ảnh gốc hoặc backend live chưa sẵn sàng; không thay thế bằng số liệu giả.
+
+```powershell
+# Cài dependency dashboard tùy chọn
+pip install -r requirements-dashboard.txt
+
+# Chạy benchmark holdout (mặc định: OCR+KIE, VLM, Hybrid)
+python scripts\benchmark_evaluation.py --split test --repeats 3
+
+# Chạy cả dev + holdout để xem tổng quan, vẫn giữ split trong JSON
+python scripts\benchmark_evaluation.py --split all --repeats 3 --out evaluation\benchmarks\benchmark_all.json
+
+# Mở dashboard (chạy từ thư mục root)
+streamlit run dashboard.py
+```
+
+Dashboard đọc các file `evaluation/benchmarks/benchmark_*.json` (artifact sinh lại, không commit), hiển thị KPI, so sánh strategy, category/field/fixture, latency và leakage/provenance. Kết quả đã đo trên máy phát triển ngày **27/11/2026**: holdout 7 mẫu có OCR+KIE field accuracy **82.86%**, Entity F1 **79.21%**; toàn bộ 11 mẫu field accuracy **89.09%**, Entity F1 **88.27%**. Đây là KIE replay từ token dump, chưa phải benchmark live công bằng giữa ba strategy.
 
 ## Evaluation
 

@@ -1,7 +1,43 @@
 # PROGRESS — Vietnamese Invoice IDP V2
 
-> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **27/11/2026 (P6 Validation & DB)**.
+> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **27/11/2026 (P7 Benchmark & Dashboard)**.
 > Mục đích: lần sau mở lại dự án là nắm ngay được đã làm gì, sửa ở đâu, số liệu ra sao và việc gì còn lại.
+
+## 0g. Cập nhật 27/11/2026 — P7: Benchmark reproducible & dashboard
+
+**Trạng thái: HOÀN TẤT P7 về benchmark và dashboard.** P7 bổ sung manifest có split `dev`/`test` holdout, runner tái lập được, dashboard Streamlit và test regression. Phần VLM/Hybrid live **không bị giả lập**: runner đánh dấu `unavailable` vì manifest hiện chỉ chứa OCR token dumps đã capture, không còn đủ ảnh gốc để chạy pipeline thị giác công bằng.
+
+### Kết quả benchmark đã chạy thật
+
+- `python scripts\\benchmark_evaluation.py --split test --repeats 3 --strategies ocr_kie vlm hybrid`: 7 fixture holdout; OCR+KIE hoàn tất, **field accuracy 82,86%**, micro **P/R/F1 = 76,92% / 81,63% / 79,21%**, exact match **14,29%**. VLM và Hybrid trả `unavailable` kèm lý do provenance, không thay bằng số liệu giả.
+- `python scripts\\benchmark_evaluation.py --split all --repeats 3 --strategies ocr_kie vlm hybrid`: 11 fixture; OCR+KIE **field accuracy 89,09%**, micro **P/R/F1 = 87,24% / 89,45% / 88,27%**, exact match **45,45%**.
+- Đây là replay từ **token dumps OCR thật** qua Spatial KIE hiện tại; không gọi lại OCR và không được diễn giải thành một lần OCR ảnh mới. Historical baseline P3 `158/176 = 89,77%` được giữ riêng vì dùng toàn bộ corpus và không phải benchmark holdout độc lập.
+- Latency replay được ghi theo từng fixture (cold/warm KIE), còn RAM/VRAM Paddle/VLM được đánh dấu unavailable vì replay token không đo được tài nguyên của hai backend.
+
+### Dashboard và khả năng tái lập
+
+- [evaluation/benchmark_manifest.json](evaluation/benchmark_manifest.json): 11 fixture, 4 `dev` + 7 `test`, leakage policy và historical baseline.
+- [evaluation/benchmark_runner.py](evaluation/benchmark_runner.py): load manifest/truth/token dump, Spatial KIE replay, tolerance số tiền, field precision/recall/F1, line-item accuracy, validation failure rate, category metrics và latency.
+- [scripts/benchmark_evaluation.py](scripts/benchmark_evaluation.py): CLI chọn split, repeats, strategy và output JSON. Artifact `evaluation/benchmarks/` được sinh lại, không commit.
+- [dashboard.py](dashboard.py): dashboard Streamlit đọc các benchmark JSON, lọc file/strategy/category/fixture, hiển thị KPI, biểu đồ native, bảng theo field, latency và provenance/unavailable reason; có nút tải JSON.
+- [requirements-dashboard.txt](requirements-dashboard.txt), [.streamlit/config.toml](.streamlit/config.toml): dependency tùy chọn và theme dashboard.
+- Đã kiểm tra `streamlit.testing.v1.AppTest`: app không exception, render 5 KPI, 3 dataframe và 2 chart. Warning hiển thị trong smoke test chỉ là hai cảnh báo VLM/Hybrid unavailable đúng theo dữ liệu.
+
+### Test P7
+
+- [backend/tests/test_benchmark.py](backend/tests/test_benchmark.py): regression cho tolerance numeric/line item, missing-vs-false-positive, split manifest và unavailable strategy.
+- `pytest -q` → **73 passed**, 1 warning deprecation từ `pytest-asyncio`/Starlette `httpx`, không phải lỗi P7.
+- `python -m py_compile dashboard.py evaluation\\benchmark_runner.py scripts\\benchmark_evaluation.py backend\\tests\\test_benchmark.py` → pass.
+- `git diff --check` → pass.
+
+### Hạn chế còn lại sau P7
+
+1. VLM/Hybrid chưa có benchmark live độc lập trên cùng ảnh/ground truth vì ảnh gốc cho 11 token dump không còn trong manifest; cần thu thập lại ảnh và bổ sung image paths trước khi kết luận strategy nào tốt hơn.
+2. OCR CER/WER trong benchmark token replay là `null` vì GT KIE hiện không đóng gói trường `text`; nếu muốn đo OCR-level cần bổ sung reference text tương ứng cho từng fixture.
+3. Dashboard hiện đọc file JSON local và chưa có authentication/database; phù hợp demo/review nội bộ, chưa phải monitoring production.
+4. Latency hiện chủ yếu phản ánh Spatial KIE replay; không dùng để báo cáo OCR/Paddle/VLM end-to-end hoặc VRAM.
+
+---
 
 ## 0f. Cập nhật 27/11/2026 — P6: Validation & DB
 
