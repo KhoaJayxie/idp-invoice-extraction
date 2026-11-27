@@ -111,6 +111,7 @@ class HeuristicPipeline(IDPPipeline):
             confidence=confidence,
             boxes=boxes,
             warnings=warnings,
+            validation_issues=validation.issues,
             strategy=self.strategy,
             raw_text=raw_text,
             math=validation.math,
@@ -183,6 +184,7 @@ class VLMPipeline(IDPPipeline):
             confidence=0.90,
             boxes=[Box.model_validate(box) for box in raw_boxes],
             warnings=list(processed.metadata.warnings) + validation.warnings,
+            validation_issues=validation.issues,
             strategy=self.strategy,
             raw_text=raw_text,
             math=validation.math,
@@ -212,16 +214,25 @@ def _normalize_invoice(data: InvoiceData) -> InvoiceData:
         if payload.get(key):
             payload[key] = normalize_text(str(payload[key]))
     payload["timestamp"] = normalize_datetime(payload.get("timestamp"))
-    for key in ("subtotal", "tax", "discount", "total_cost"):
-        payload[key] = normalize_money(payload.get(key))
+    for key in ("subtotal", "tax", "discount", "total_cost", "rounding"):
+        if payload.get(key) is not None:
+            payload[key] = normalize_money(payload.get(key))
     normalized_items = []
     for item in payload.get("items", []):
         item["name"] = normalize_text(item.get("name", ""))
         item["quantity"] = normalize_money(item.get("quantity", 1))
         item["unit_price"] = normalize_money(item.get("unit_price", 0))
-        item["amount"] = normalize_money(item.get("amount", 0)) or item["quantity"] * item["unit_price"]
+        amount = normalize_money(item.get("amount", 0))
+        if amount == 0 and not (item.get("field_presence") or {}).get("amount", False):
+            amount = item["quantity"] * item["unit_price"]
+        item["amount"] = amount
         normalized_items.append(item)
     payload["items"] = normalized_items
+    if not payload.get("field_presence"):
+        payload["field_presence"] = {
+            key: key in data.model_fields_set and payload.get(key) is not None
+            for key in ("subtotal", "tax", "discount", "total_cost", "timestamp", "seller", "invoice_id")
+        }
     if payload["subtotal"] <= 0 and normalized_items:
         payload["subtotal"] = sum(item["amount"] for item in normalized_items)
     return InvoiceData.model_validate(payload)

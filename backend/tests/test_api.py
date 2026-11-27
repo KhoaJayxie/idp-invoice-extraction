@@ -78,6 +78,43 @@ def test_review_action_rejects_invalid_status(client):
     assert response.status_code == 422
 
 
+def test_validation_blocks_verification_and_duplicate_override(client):
+    payload = {
+        "invoice_id": "P6-001",
+        "seller": "P6 SHOP",
+        "timestamp": "2026-01-01T10:00:00",
+        "subtotal": 100,
+        "tax": 8,
+        "total_cost": 108,
+        "confidence": 0.95,
+        "file_hash": "a" * 64,
+        "items": [{"name": "A", "quantity": 1, "unit_price": 100, "amount": 100, "confidence": 0.9}],
+    }
+    created = client.post("/api/invoices", json=payload)
+    assert created.status_code == 201, created.text
+    invoice_id = created.json()["id"]
+    duplicate = client.post("/api/invoices", json=payload)
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"]["code"] == "DUPLICATE_INVOICE"
+
+    bad = client.put(f"/api/invoices/{invoice_id}", json={"total_cost": 999})
+    assert bad.status_code == 200
+    assert any(issue["code"] == "total_mismatch" for issue in bad.json()["validation_issues"])
+    blocked = client.post(f"/api/invoices/{invoice_id}/review", json={"status": "VERIFIED"})
+    assert blocked.status_code == 422
+    verified = client.post(f"/api/invoices/{invoice_id}/review", json={"status": "VERIFIED", "validation_override": True, "validation_override_reason": "Đã đối chiếu bản giấy"})
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["status"] == "VERIFIED"
+    assert verified.json()["validation_override"] is True
+
+
+def test_duplicate_override_requires_reason(client):
+    base = {"invoice_id": "P6-002", "seller": "P6 SHOP", "file_hash": "b" * 64, "total_cost": 10, "validation_override": True, "validation_override_reason": "Đối chiếu thủ công"}
+    assert client.post("/api/invoices", json=base).status_code == 201
+    duplicate = client.post("/api/invoices", json={**base, "duplicate_override": True})
+    assert duplicate.status_code == 422
+
+
 def test_extract_returns_503_in_strict_real_mode_without_engine(client, monkeypatch):
     from backend.app.api import routes
 

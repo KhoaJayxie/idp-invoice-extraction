@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # before the human-review workflow. New review actions use VERIFIED explicitly.
 ReviewStatus = Literal["NEEDS_REVIEW", "VERIFIED", "REJECTED", "VALIDATED"]
 ActionStatus = Literal["NEEDS_REVIEW", "VERIFIED", "REJECTED"]
+ValidationSeverity = Literal["info", "warning", "error", "critical"]
 
 
 class Box(BaseModel):
@@ -29,6 +30,8 @@ class LineItem(BaseModel):
     amount: float = 0.0
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    # Explicit presence flags distinguish an omitted value from a real zero.
+    field_presence: dict[str, bool] = Field(default_factory=dict)
 
 
 class InvoiceData(BaseModel):
@@ -47,8 +50,43 @@ class InvoiceData(BaseModel):
     tax: float = 0.0
     discount: float = 0.0
     total_cost: float = 0.0
+    discount_rate: float | None = Field(default=None, ge=0.0, le=100.0)
+    # Optional fields are populated when the source explicitly exposes them;
+    # legacy extraction payloads remain valid.
+    tax_rate: float | None = Field(default=None, ge=0.0, le=100.0)
+    tax_included: bool | None = None
+    rounding: float = 0.0
+    field_presence: dict[str, bool] = Field(default_factory=dict)
     items: list[LineItem] = Field(default_factory=list)
     field_confidence: dict[str, float] = Field(default_factory=dict)
+
+
+class ValidationIssue(BaseModel):
+    field: str
+    code: str
+    message: str
+    severity: ValidationSeverity
+    value: Any = None
+    expected: Any = None
+
+
+class DuplicateMatch(BaseModel):
+    id: int
+    reason: str
+    invoice_id: str | None = None
+    seller: str | None = None
+    total_cost: float = 0.0
+    status: str
+    created_at: datetime | None = None
+
+
+class DuplicateResponse(BaseModel):
+    duplicates: list[DuplicateMatch] = Field(default_factory=list)
+
+
+class ValidationRequest(BaseModel):
+    validation_override: bool = False
+    validation_override_reason: str | None = Field(default=None, max_length=2000)
 
 
 class InvoiceCreate(InvoiceData):
@@ -56,6 +94,7 @@ class InvoiceCreate(InvoiceData):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     strategy: str | None = None
     source_image: str | None = None
+    file_hash: str | None = Field(default=None, min_length=64, max_length=64)
     aligned_image_url: str | None = None
     processed_image_url: str | None = None
     binary_image_url: str | None = None
@@ -63,6 +102,11 @@ class InvoiceCreate(InvoiceData):
     raw_json: dict[str, Any] | None = None
     preprocessing_json: dict[str, Any] | None = None
     original_prediction: dict[str, Any] | None = None
+    validation_issues: list[ValidationIssue] = Field(default_factory=list)
+    validation_override: bool = False
+    validation_override_reason: str | None = Field(default=None, max_length=2000)
+    duplicate_override: bool = False
+    duplicate_override_reason: str | None = Field(default=None, max_length=2000)
 
 
 class InvoiceUpdate(BaseModel):
@@ -81,11 +125,17 @@ class InvoiceUpdate(BaseModel):
     tax: float | None = None
     discount: float | None = None
     total_cost: float | None = None
+    discount_rate: float | None = Field(default=None, ge=0.0, le=100.0)
+    tax_rate: float | None = Field(default=None, ge=0.0, le=100.0)
+    tax_included: bool | None = None
+    rounding: float | None = None
+    field_presence: dict[str, bool] | None = None
     items: list[LineItem] | None = None
     status: ReviewStatus | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     strategy: str | None = None
     source_image: str | None = None
+    file_hash: str | None = Field(default=None, min_length=64, max_length=64)
     aligned_image_url: str | None = None
     processed_image_url: str | None = None
     binary_image_url: str | None = None
@@ -94,11 +144,22 @@ class InvoiceUpdate(BaseModel):
     preprocessing_json: dict[str, Any] | None = None
     field_confidence: dict[str, float] | None = None
     original_prediction: dict[str, Any] | None = None
+    validation_issues: list[ValidationIssue] | None = None
+    validation_override: bool | None = None
+    validation_override_reason: str | None = Field(default=None, max_length=2000)
+    duplicate_override: bool | None = None
+    duplicate_override_reason: str | None = Field(default=None, max_length=2000)
 
 class InvoiceOut(InvoiceCreate):
     id: int
     source_image_url: str | None = None
+    file_hash: str | None = None
     original_prediction: dict[str, Any] = Field(default_factory=dict)
+    validation_issues: list[ValidationIssue] = Field(default_factory=list)
+    validation_override: bool = False
+    validation_override_reason: str | None = None
+    duplicate_override: bool = False
+    duplicate_override_reason: str | None = None
     correction_history: list[dict[str, Any]] = Field(default_factory=list)
     reviewed_at: datetime | None = None
     created_at: datetime
@@ -109,6 +170,8 @@ class InvoiceOut(InvoiceCreate):
 class ReviewAction(BaseModel):
     status: ActionStatus
     note: str | None = Field(default=None, max_length=2000)
+    validation_override: bool = False
+    validation_override_reason: str | None = Field(default=None, max_length=2000)
 
 
 class ReviewActionOut(BaseModel):
@@ -133,6 +196,7 @@ class ValidationResultSchema(BaseModel):
     status: str
     confidence: float
     warnings: list[str] = Field(default_factory=list)
+    issues: list[ValidationIssue] = Field(default_factory=list)
     math: MathCheck
 
 
@@ -176,11 +240,14 @@ class ExtractionResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     boxes: list[Box] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    validation_issues: list[ValidationIssue] = Field(default_factory=list)
+    duplicates: list[DuplicateMatch] = Field(default_factory=list)
     strategy: str
     raw_text: str = ""
     math: MathCheck | None = None
     preprocess: PreprocessMetadata | None = None
     source_image: str | None = None
+    file_hash: str | None = None
     original_filename: str | None = None
     source_image_url: str | None = None
     aligned_image_url: str | None = None

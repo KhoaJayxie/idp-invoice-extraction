@@ -232,7 +232,13 @@ details.sidecar-settings[disabled] summary { cursor: not-allowed; }
 .status-rejected { color: #a32e2e; background: color-mix(in srgb, var(--status-critical) 13%, var(--surface)); }
 :root[data-theme="dark"] .button-confirm, :root[data-theme="dark"] .status-valid { color: #73d773; }
 :root[data-theme="dark"] .button-reject, :root[data-theme="dark"] .status-rejected { color: #ff8888; }
-.warning-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.override-control { display: flex; gap: 7px; align-items: center; margin-top: 10px; color: var(--status-serious); font-size: 10px; }
+.override-reason { display: block; width: 100%; min-height: 32px; margin-top: 6px; padding: 0 9px; color: var(--ink); border: 1px solid var(--border); border-radius: 7px; background: var(--surface); font-size: 10px; }
+.validation-issues { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.validation-issue { padding: 8px 10px; border-left: 3px solid var(--status-warning); color: var(--ink-secondary); background: var(--surface-soft); font-size: 10px; }
+.validation-critical, .validation-error { border-left-color: var(--status-critical); color: #a32e2e; }
+.validation-warning { border-left-color: var(--status-warning); }
+:root[data-theme="dark"] .validation-critical, :root[data-theme="dark"] .validation-error { color: #ff8888; }
 .warning-item { display: flex; gap: 8px; padding: 8px 10px; color: #75500c; border-radius: 7px; background: color-mix(in srgb, var(--status-warning) 15%, var(--surface)); font-size: 10px; }
 :root[data-theme="dark"] .warning-item { color: #f0d394; }
 .warning-mark { flex: 0 0 auto; }

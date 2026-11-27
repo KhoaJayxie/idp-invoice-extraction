@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -20,9 +21,12 @@ from ..database import get_db
 from ..idp_engine.hybrid import HybridPipeline
 from ..idp_engine.pipeline import HeuristicPipeline, IDPPipeline, VLMPipeline
 from ..idp_engine.ocr_detector import OCRUnavailableError
+from ..idp_engine.postprocessor import validate_invoice
 from ..idp_engine.preprocessor import ImagePreprocessor, PreprocessConfig, ImagePreprocessingError
 from ..models import Invoice, InvoiceItem
 from ..schemas import (
+    DuplicateMatch,
+    DuplicateResponse,
     ExtractionResponse,
     InvoiceCreate,
     InvoiceOut,
@@ -32,6 +36,8 @@ from ..schemas import (
     PreviewResponse,
     ReviewAction,
     StatsResponse,
+    ValidationIssue,
+    ValidationRequest,
 )
 
 router = APIRouter()
@@ -96,13 +102,122 @@ def _save_upload(raw: bytes, filename: str | None, ocr_text: str | None = None) 
     return target, original_filename
 
 
-def _prediction_snapshot(payload: InvoiceCreate) -> dict:
-    """Return an immutable, JSON-safe copy of the AI draft.
+def _file_sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
 
-    New clients may provide a richer snapshot (including OCR boxes and field
-    provenance). For older clients, capture the submitted extraction values so
-    later edits never destroy the first prediction.
-    """
+
+def _validation_dicts(issues: list[ValidationIssue]) -> list[dict]:
+    return [issue.model_dump(mode="json") for issue in issues]
+
+
+def _payload_presence(payload: InvoiceCreate | InvoiceUpdate) -> dict[str, bool]:
+    fields = ("timestamp", "seller", "invoice_id", "subtotal", "tax", "discount", "total_cost")
+    explicit = dict(getattr(payload, "field_presence", None) or {})
+    return {
+        field: bool(explicit.get(field, field in payload.model_fields_set and getattr(payload, field, None) is not None))
+        for field in fields
+    }
+
+
+def _item_presence(item: LineItem) -> dict[str, bool]:
+    explicit = dict(item.field_presence or {})
+    return {
+        field: bool(explicit.get(field, field in item.model_fields_set and getattr(item, field, None) is not None))
+        for field in ("quantity", "unit_price", "amount")
+    }
+
+
+def _validation_invoice(row: Invoice) -> InvoiceData:
+    """Build the same validation input for extracted and manually edited data."""
+    from ..schemas.invoice import InvoiceData
+
+    return InvoiceData(
+        invoice_id=row.invoice_id,
+        invoice_series=row.invoice_series,
+        invoice_form=row.invoice_form,
+        seller=row.seller,
+        buyer=row.buyer,
+        address=row.address,
+        buyer_address=row.buyer_address,
+        tax_id=row.tax_id,
+        buyer_tax_id=row.buyer_tax_id,
+        currency=row.currency,
+        timestamp=row.timestamp,
+        subtotal=row.subtotal,
+        tax=row.tax,
+        discount=row.discount,
+        total_cost=row.total_cost,
+        discount_rate=row.discount_rate,
+        tax_rate=row.tax_rate,
+        tax_included=row.tax_included,
+        rounding=row.rounding,
+        field_presence=row.field_presence or {},
+        items=[
+            LineItem(
+                name=item.name,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                amount=item.amount,
+                confidence=item.confidence,
+                bbox=item.bbox,
+                field_presence=item.field_presence or {},
+            )
+            for item in row.items
+        ],
+    )
+
+
+def _find_duplicates(db: Session, *, file_hash: str | None, invoice_id: str | None, seller: str | None,
+                     timestamp: datetime | None, total_cost: float | None, exclude_id: int | None = None) -> list[dict]:
+    from ..idp_engine.postprocessor import normalize_text
+
+    matches: list[dict] = []
+    query = db.query(Invoice)
+    if exclude_id is not None:
+        query = query.filter(Invoice.id != exclude_id)
+    if file_hash:
+        for row in query.filter(Invoice.file_hash == file_hash).all():
+            matches.append({"row": row, "reason": "Trùng SHA-256 file ảnh"})
+    if invoice_id and seller:
+        norm_seller = normalize_text(seller).casefold()
+        for row in query.filter(Invoice.invoice_id == invoice_id).all():
+            if row.seller and normalize_text(row.seller).casefold() == norm_seller and row.id not in {item["row"].id for item in matches}:
+                matches.append({"row": row, "reason": "Trùng mã hóa đơn và nhà bán"})
+    if seller and timestamp and total_cost is not None:
+        norm_seller = normalize_text(seller).casefold()
+        for row in query.filter(Invoice.seller.isnot(None)).all():
+            same_day = row.timestamp and row.timestamp.date() == timestamp.date()
+            same_total = abs(float(row.total_cost or 0) - float(total_cost)) <= max(0.01, abs(float(total_cost)) * 0.001)
+            if row.seller and normalize_text(row.seller).casefold() == norm_seller and same_day and same_total and row.id not in {item["row"].id for item in matches}:
+                matches.append({"row": row, "reason": "Trùng nhà bán, ngày và tổng tiền"})
+    return matches
+
+
+def _duplicate_out(match: dict) -> DuplicateMatch:
+    row = match["row"]
+    return DuplicateMatch(
+        id=row.id,
+        reason=match["reason"],
+        invoice_id=row.invoice_id,
+        seller=row.seller,
+        total_cost=float(row.total_cost or 0),
+        status=row.status,
+        created_at=row.created_at,
+    )
+def _revalidate_row(row: Invoice, *, override: bool | None = None, override_reason: str | None = None, reset_status: bool = True):
+    result = validate_invoice(_validation_invoice(row), float(row.confidence or 0.0), settings.review_confidence_threshold)
+    row.validation_issues = _validation_dicts(result.issues)
+    if override is not None:
+        if override and not (override_reason or "").strip():
+            raise HTTPException(status_code=422, detail="Cần ghi rõ lý do override validation.")
+        row.validation_override = bool(override)
+        row.validation_override_reason = (override_reason or "").strip() or None
+    if reset_status and result.critical_errors and row.status in {"VERIFIED", "VALIDATED"} and not row.validation_override:
+        row.status = "NEEDS_REVIEW"
+        row.reviewed_at = None
+    return result
+def _prediction_snapshot(payload: InvoiceCreate) -> dict:
+    """Return an immutable, JSON-safe copy of the AI draft."""
     if payload.original_prediction:
         return payload.original_prediction
     return {
@@ -118,7 +233,8 @@ def _invoice_snapshot(row: Invoice) -> dict:
         for key in (
             "invoice_id", "invoice_series", "invoice_form", "seller", "buyer",
             "address", "buyer_address", "tax_id", "buyer_tax_id", "currency",
-            "timestamp", "subtotal", "tax", "discount", "total_cost",
+            "timestamp", "subtotal", "tax", "discount", "discount_rate", "total_cost", "tax_rate",
+            "tax_included", "rounding", "field_presence",
         )
     }
     values["timestamp"] = values["timestamp"].isoformat() if values["timestamp"] else None
@@ -128,6 +244,7 @@ def _invoice_snapshot(row: Invoice) -> dict:
             "quantity": item.quantity,
             "unit_price": item.unit_price,
             "amount": item.amount,
+            "field_presence": item.field_presence or {},
         }
         for item in row.items
     ]
@@ -156,6 +273,11 @@ def _to_out(row: Invoice) -> InvoiceOut:
         tax=row.tax,
         discount=row.discount,
         total_cost=row.total_cost,
+        discount_rate=row.discount_rate,
+        tax_rate=row.tax_rate,
+        tax_included=row.tax_included,
+        rounding=row.rounding,
+        field_presence=row.field_presence or {},
         items=[
             LineItem(
                 name=item.name,
@@ -164,6 +286,7 @@ def _to_out(row: Invoice) -> InvoiceOut:
                 amount=item.amount,
                 confidence=item.confidence,
                 bbox=item.bbox,
+                field_presence=item.field_presence or {},
             )
             for item in row.items
         ],
@@ -176,10 +299,16 @@ def _to_out(row: Invoice) -> InvoiceOut:
         processed_image_url=row.processed_image_url,
         binary_image_url=row.binary_image_url,
         original_filename=row.original_filename,
+        file_hash=row.file_hash,
         source_image_url=f"/api/uploads/{row.source_image}" if row.source_image else None,
         raw_json=row.raw_json,
         preprocessing_json=row.preprocessing_json,
         original_prediction=row.original_prediction or {},
+        validation_issues=[ValidationIssue.model_validate(issue) for issue in (row.validation_issues or [])],
+        validation_override=bool(row.validation_override),
+        validation_override_reason=row.validation_override_reason,
+        duplicate_override=bool(row.duplicate_override),
+        duplicate_override_reason=row.duplicate_override_reason,
         correction_history=row.correction_history or [],
         reviewed_at=row.reviewed_at,
         created_at=row.created_at,
@@ -238,9 +367,11 @@ async def extract(
     mode: str | None = Form(default=None),
     ocr_text: str | None = Form(default=None),
     preprocess_options: str | None = Form(default=None),
+    db: Session = Depends(get_db),
 ):
     raw = await _read_limited(file)
     _validate_upload_size(raw)
+    file_hash = _file_sha256(raw)
     preprocess_options = _parse_options(preprocess_options)
     pipeline = _pipeline_for(mode)
     if ocr_text and len(ocr_text) > 100_000:
@@ -268,11 +399,21 @@ async def extract(
         target.with_suffix(".txt").unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Lỗi xử lý không mong muốn: {exc}") from exc
     source_url = f"/api/uploads/{target.name}"
+    matches = _find_duplicates(
+        db,
+        file_hash=file_hash,
+        invoice_id=response.invoice.invoice_id,
+        seller=response.invoice.seller,
+        timestamp=response.invoice.timestamp,
+        total_cost=response.invoice.total_cost,
+    )
     return response.model_copy(
         update={
             "source_image": target.name,
+            "file_hash": file_hash,
             "original_filename": original_filename,
             "source_image_url": source_url,
+            "duplicates": [_duplicate_out(match) for match in matches],
         }
     )
 
@@ -354,9 +495,30 @@ def get_invoice(invoice_pk: int, db: Session = Depends(get_db)):
 
 @router.post("/invoices", response_model=InvoiceOut, status_code=201)
 def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
-    data = payload.model_dump(exclude={"items", "field_confidence", "original_prediction"})
+    duplicate_matches = _find_duplicates(
+        db,
+        file_hash=payload.file_hash,
+        invoice_id=payload.invoice_id,
+        seller=payload.seller,
+        timestamp=payload.timestamp,
+        total_cost=payload.total_cost,
+    )
+    if duplicate_matches and not payload.duplicate_override:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "DUPLICATE_INVOICE",
+                "message": "Hóa đơn có khả năng trùng với dữ liệu đã lưu.",
+                "duplicates": [_duplicate_out(match).model_dump(mode="json") for match in duplicate_matches],
+            },
+        )
+    if duplicate_matches and not (payload.duplicate_override_reason or "").strip():
+        raise HTTPException(status_code=422, detail="Cần ghi rõ lý do override khi bỏ qua hóa đơn trùng.")
+    data = payload.model_dump(exclude={"items", "field_confidence", "original_prediction", "validation_issues"})
     data["original_prediction"] = _prediction_snapshot(payload)
     data["correction_history"] = []
+    data["validation_issues"] = [issue.model_dump(mode="json") for issue in payload.validation_issues]
+    data["field_presence"] = _payload_presence(payload)
     data["raw_json"] = {**(data.get("raw_json") or {}), "field_confidence": payload.field_confidence}
     if data.get("preprocessing_json") is None:
         data.pop("preprocessing_json", None)
@@ -370,11 +532,32 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
             amount=item.amount,
             confidence=item.confidence,
             bbox=item.bbox,
+            field_presence=_item_presence(item),
         )
         for index, item in enumerate(payload.items, 1)
     ]
+    result = _revalidate_row(
+        row,
+        override=payload.validation_override,
+        override_reason=payload.validation_override_reason,
+        reset_status=False,
+    )
+    row.duplicate_override = bool(payload.duplicate_override)
+    row.duplicate_override_reason = (payload.duplicate_override_reason or "").strip() or None
+    if result.critical_errors and payload.status in {"VERIFIED", "VALIDATED"} and not payload.validation_override:
+        raise HTTPException(status_code=422, detail={
+            "code": "VALIDATION_BLOCKED",
+            "message": "Không thể xác minh khi còn lỗi validation nghiêm trọng.",
+            "issues": _validation_dicts(result.critical_errors),
+        })
+    if duplicate_matches:
+        _append_history(row, {"type": "duplicate_override", "reason": row.duplicate_override_reason, "matches": [_duplicate_out(match).model_dump(mode="json") for match in duplicate_matches]})
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(row)
     return _to_out(row)
 
@@ -388,14 +571,27 @@ def update_invoice(invoice_pk: int, payload: InvoiceUpdate, db: Session = Depend
     previous_status = row.status
     values = payload.model_dump(
         exclude_unset=True,
-        exclude={"items", "field_confidence", "original_prediction"},
+        exclude={"items", "field_confidence", "original_prediction", "validation_issues", "validation_override", "validation_override_reason", "duplicate_override", "duplicate_override_reason"},
     )
     if "raw_json" in values and values["raw_json"] is None:
         values.pop("raw_json")
     for key, value in values.items():
         setattr(row, key, value)
+    presence = dict(row.field_presence or {})
+    for field in ("timestamp", "seller", "invoice_id", "subtotal", "tax", "discount", "total_cost"):
+        if field in payload.model_fields_set:
+            presence[field] = getattr(payload, field) is not None
+    if payload.field_presence:
+        presence.update(payload.field_presence)
+    row.field_presence = presence
     if payload.original_prediction is not None and not row.original_prediction:
         row.original_prediction = payload.original_prediction
+    if payload.validation_override is not None:
+        row.validation_override = payload.validation_override
+        row.validation_override_reason = (payload.validation_override_reason or "").strip() or None
+    if payload.duplicate_override is not None:
+        row.duplicate_override = payload.duplicate_override
+        row.duplicate_override_reason = (payload.duplicate_override_reason or "").strip() or None
     if payload.field_confidence is not None:
         raw = dict(row.raw_json or {})
         raw["field_confidence"] = payload.field_confidence
@@ -411,12 +607,26 @@ def update_invoice(invoice_pk: int, payload: InvoiceUpdate, db: Session = Depend
                 amount=item.amount,
                 confidence=item.confidence,
                 bbox=item.bbox,
+                field_presence=item.field_presence,
             )
             for index, item in enumerate(payload.items, 1)
         )
     after = _invoice_snapshot(row)
     if before != after:
         _append_history(row, {"type": "correction", "before": before, "after": after})
+    result = _revalidate_row(
+        row,
+        override=payload.validation_override,
+        override_reason=payload.validation_override_reason,
+        reset_status=True,
+    )
+    if payload.status in {"VERIFIED", "VALIDATED"} and result.critical_errors and not row.validation_override:
+        db.rollback()
+        raise HTTPException(status_code=422, detail={
+            "code": "VALIDATION_BLOCKED",
+            "message": "Không thể xác minh khi còn lỗi validation nghiêm trọng.",
+            "issues": _validation_dicts(result.critical_errors),
+        })
     if payload.status is not None and payload.status != previous_status:
         _append_history(row, {"type": "status_change", "from_status": previous_status, "status": payload.status})
         if payload.status in {"VERIFIED", "REJECTED"}:
@@ -433,7 +643,22 @@ def review_invoice(invoice_pk: int, payload: ReviewAction, db: Session = Depends
     if row is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
     previous = row.status
+    result = _revalidate_row(
+        row,
+        override=payload.validation_override,
+        override_reason=payload.validation_override_reason,
+        reset_status=False,
+    )
+    if payload.status in {"VERIFIED"} and result.critical_errors and not row.validation_override:
+        db.rollback()
+        raise HTTPException(status_code=422, detail={
+            "code": "VALIDATION_BLOCKED",
+            "message": "Không thể xác minh khi còn lỗi validation nghiêm trọng.",
+            "issues": _validation_dicts(result.critical_errors),
+        })
     row.status = payload.status
+    if payload.validation_override:
+        _append_history(row, {"type": "validation_override", "reason": row.validation_override_reason})
     row.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     _append_history(row, {
         "type": "review_action",
@@ -446,6 +671,32 @@ def review_invoice(invoice_pk: int, payload: ReviewAction, db: Session = Depends
     return _to_out(row)
 
 
+@router.post("/invoices/{invoice_pk}/validate", response_model=InvoiceOut)
+def revalidate_invoice(invoice_pk: int, payload: ValidationRequest, db: Session = Depends(get_db)):
+    row = db.query(Invoice).options(selectinload(Invoice.items)).filter(Invoice.id == invoice_pk).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    result = _revalidate_row(row, override=payload.validation_override, override_reason=payload.validation_override_reason)
+    db.commit()
+    db.refresh(row)
+    return _to_out(row)
+
+
+@router.get("/invoices/{invoice_pk}/duplicates", response_model=DuplicateResponse)
+def invoice_duplicates(invoice_pk: int, db: Session = Depends(get_db)):
+    row = db.get(Invoice, invoice_pk)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    matches = _find_duplicates(
+        db,
+        file_hash=row.file_hash,
+        invoice_id=row.invoice_id,
+        seller=row.seller,
+        timestamp=row.timestamp,
+        total_cost=row.total_cost,
+        exclude_id=row.id,
+    )
+    return DuplicateResponse(duplicates=[_duplicate_out(match) for match in matches])
 @router.get("/invoices/{invoice_pk}/review-history")
 def invoice_review_history(invoice_pk: int, db: Session = Depends(get_db)):
     row = db.get(Invoice, invoice_pk)
@@ -517,7 +768,7 @@ def export_invoices(
     db: Session = Depends(get_db),
 ):
     rows = db.query(Invoice).options(selectinload(Invoice.items)).order_by(Invoice.created_at.desc()).all()
-    headers = ["id", "invoice_id", "seller", "address", "timestamp", "subtotal", "tax", "discount", "total_cost", "status", "confidence", "items"]
+    headers = ["id", "invoice_id", "seller", "address", "timestamp", "subtotal", "tax", "tax_rate", "discount", "discount_rate", "rounding", "total_cost", "currency", "file_hash", "status", "validation_errors", "confidence", "items"]
     values = [
         [
             row.id,
@@ -527,9 +778,15 @@ def export_invoices(
             row.timestamp.isoformat(sep=" ") if row.timestamp else "",
             row.subtotal,
             row.tax,
+            row.tax_rate,
             row.discount,
+            row.discount_rate,
+            row.rounding,
             row.total_cost,
+            _spreadsheet_safe(row.currency or ""),
+            row.file_hash or "",
             row.status,
+            _spreadsheet_safe("; ".join(issue.get("message", "") for issue in (row.validation_issues or []))),
             row.confidence,
             _spreadsheet_safe("; ".join(f"{item.name} x{item.quantity} = {item.amount}" for item in row.items)),
         ]

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -32,6 +32,12 @@ class Invoice(Base):
     tax: Mapped[float] = mapped_column(Float, default=0.0)
     discount: Mapped[float] = mapped_column(Float, default=0.0)
     total_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    discount_rate: Mapped[float | None] = mapped_column(Float)
+    tax_rate: Mapped[float | None] = mapped_column(Float)
+    tax_included: Mapped[bool | None] = mapped_column(Boolean)
+    rounding: Mapped[float] = mapped_column(Float, default=0.0)
+    field_presence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    file_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32), default="NEEDS_REVIEW", index=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     strategy: Mapped[str | None] = mapped_column(String(64))
@@ -46,6 +52,11 @@ class Invoice(Base):
     # and provenance, while this snapshot preserves the exact editable draft.
     original_prediction: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     correction_history: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=list)
+    validation_issues: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=list)
+    validation_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    validation_override_reason: Mapped[str | None] = mapped_column(Text)
+    duplicate_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    duplicate_override_reason: Mapped[str | None] = mapped_column(Text)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(
@@ -71,5 +82,6 @@ class InvoiceItem(Base):
     amount: Mapped[float] = mapped_column(Float, default=0.0)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     bbox: Mapped[list[float] | None] = mapped_column(JSON)
+    field_presence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     invoice: Mapped[Invoice] = relationship(back_populates="items")

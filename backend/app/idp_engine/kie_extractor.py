@@ -916,6 +916,11 @@ class KIEExtractor:
             amount=float(amount or (float(qty) * float(price or 0.0))),
             confidence=round(ocr_conf, 3),
             bbox=box,
+            field_presence={
+                "quantity": qty is not None,
+                "unit_price": price is not None,
+                "amount": amount is not None,
+            },
         )
 
     def _resolve_row_numbers(
@@ -1000,6 +1005,7 @@ class KIEExtractor:
                     amount=amount if amount else quantity * unit_price,
                     confidence=line.toks[0].conf,
                     bbox=line.box,
+                    field_presence={"quantity": True, "unit_price": True, "amount": True},
                 )
             )
         return items
@@ -1755,6 +1761,11 @@ class KIEExtractor:
             invoice.subtotal = sums
             subtotal_fld = _Field(sums, min((i.confidence for i in items), default=0.0), 0.8, "computed", [])
             fields["subtotal"] = subtotal_fld
+        invoice.field_presence = {
+            name: bool(fld is not None and fld.filled())
+            for name, fld in fields.items()
+        }
+        invoice.field_presence["items"] = bool(items)
         field_confidence: dict[str, float] = {}
         field_details: dict[str, dict[str, Any]] = {}
         for name, fld in fields.items():

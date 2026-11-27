@@ -13,6 +13,10 @@ from .invoice import (
     ReviewAction,
     ReviewActionOut,
     StatsResponse,
+    DuplicateMatch,
+    DuplicateResponse,
+    ValidationIssue,
+    ValidationRequest,
     ValidationResultSchema,
 )
 
@@ -26,10 +30,13 @@ __all__ = [
     "LineItem",
     "MathCheck",
     "PreprocessMetadata",
-    "PreprocessOptions",
     "PreviewResponse",
     "ReviewAction",
     "ReviewActionOut",
     "StatsResponse",
+    "DuplicateMatch",
+    "DuplicateResponse",
+    "ValidationIssue",
+    "ValidationRequest",
     "ValidationResultSchema",
 ]

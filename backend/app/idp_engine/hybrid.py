@@ -555,6 +555,7 @@ class HybridPipeline:
                 "invoice": invoice,
                 "status": status,
                 "warnings": warning_messages,
+                "validation_issues": validation.issues,
                 "math": validation.math,
                 "strategy": self.strategy,
                 "timings": timings,

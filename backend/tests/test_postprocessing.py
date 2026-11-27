@@ -53,7 +53,33 @@ def test_validation_prefers_item_sum_over_misread_subtotal():
     assert any("Tạm tính" in warning for warning in result.warnings)
 
 
-def test_kie_extracts_vietnamese_header_and_items():
+def test_validation_reports_line_math_and_severity():
+    data = InvoiceData(
+        seller="ABC",
+        timestamp=datetime(2026, 1, 1),
+        tax_id="bad-id",
+        subtotal=100,
+        tax=8,
+        tax_rate=8,
+        total_cost=108,
+        field_presence={"seller": True, "timestamp": True, "subtotal": True, "tax": True, "total_cost": True},
+        items=[LineItem(name="A", quantity=2, unit_price=10, amount=15, field_presence={"quantity": True, "unit_price": True, "amount": True})],
+    )
+    result = validate_invoice(data, 0.95)
+    assert any(issue.code == "line_math_mismatch" and issue.severity == "error" for issue in result.issues)
+    assert any(issue.code == "invalid_tax_id" for issue in result.issues)
+    assert result.status == "NEEDS_REVIEW"
+
+
+def test_validation_distinguishes_explicit_zero_from_missing():
+    zero_tax = InvoiceData(
+        seller="ABC", timestamp=datetime(2026, 1, 1), subtotal=100, tax=0, total_cost=100,
+        field_presence={"seller": True, "timestamp": True, "subtotal": True, "tax": True, "total_cost": True},
+        items=[LineItem(name="A", quantity=1, unit_price=100, amount=100, field_presence={"quantity": True, "unit_price": True, "amount": True})],
+    )
+    result = validate_invoice(zero_tax, 0.95)
+    assert not any(issue.code == "missing_required" and issue.field == "tax" for issue in result.issues)
+    assert result.math.passed
     tokens = [
         OCRToken("CỬA HÀNG MINH AN", [0, 0, 600, 30], 0.98),
         OCRToken("Địa chỉ: 123 Nguyễn Huệ, TP.HCM", [0, 40, 600, 70], 0.95),

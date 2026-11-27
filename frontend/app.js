@@ -19,6 +19,8 @@
     panY: 0,
     fieldDetails: {},
     activeField: null,
+    validationIssues: [],
+    validationOverride: false,
     isPanning: false,
     panStart: null,
   };
@@ -45,6 +47,11 @@
     try { body = await response.json(); } catch (_) { /* non-JSON errors are handled below */ }
     if (!response.ok) {
       const detail = body && (body.detail || body.message);
+      if (detail && typeof detail === "object") {
+        const issues = Array.isArray(detail.issues) ? detail.issues.map((issue) => issue.message || issue.code).join("; ") : "";
+        const duplicates = Array.isArray(detail.duplicates) ? ` Trùng: ${detail.duplicates.map((item) => item.reason || `#${item.id}`).join(", ")}.` : "";
+        throw new Error(`${detail.message || detail.code || "API error"}${issues ? ` ${issues}` : ""}${duplicates}`);
+      }
       throw new Error(detail || `API error ${response.status}`);
     }
     return body;
@@ -192,6 +199,8 @@
     state.selectedBox = -1;
     state.fieldDetails = {};
     state.activeField = null;
+    state.validationIssues = [];
+    state.validationOverride = false;
     state.zoom = 1;
     state.panX = 0;
     state.panY = 0;
@@ -268,6 +277,7 @@
       updateConfidence(result.confidence);
       updateMetrics(result.preprocess);
       renderWarnings(result.warnings || []);
+      renderValidationIssues(result.validation_issues || []);
       renderProvenance(result);
       renderOCRList();
       selectVariant("original");
@@ -544,15 +554,17 @@
   }
 
   function fillForm(invoice, status) {
-    ["seller", "invoice_id", "address", "tax_id", "buyer", "buyer_address", "buyer_tax_id", "currency", "subtotal", "tax", "discount", "total_cost"].forEach((key) => {
+    ["seller", "invoice_id", "address", "tax_id", "buyer", "buyer_address", "buyer_tax_id", "currency", "tax_rate", "subtotal", "tax", "discount", "total_cost"].forEach((key) => {
       $(key).value = invoice[key] === null || invoice[key] === undefined ? "" : invoice[key];
     });
+    $("tax_included").value = invoice.tax_included === null || invoice.tax_included === undefined ? "" : String(invoice.tax_included);
     $("timestamp").value = invoice.timestamp ? String(invoice.timestamp).slice(0, 16) : "";
     $("status").value = status || "NEEDS_REVIEW";
     state.items = (invoice.items || []).map((item) => ({ ...item }));
     renderItems();
     updateMathCheck();
     renderFieldReview();
+    renderValidationIssues(state.response?.validation_issues || invoice.validation_issues || []);
   }
 
   function addItem(item = {}) {
@@ -599,7 +611,20 @@
     warnings.forEach((message) => { const item = document.createElement("div"); item.className = "warning-item"; const mark = document.createElement("span"); mark.className = "warning-mark"; mark.textContent = "⚠"; const text = document.createElement("span"); text.textContent = message; item.append(mark, text); target.append(item); });
   }
 
-  // Hybrid provenance: VLM activation, per-field sources, KIE↔VLM conflicts.
+  function renderValidationIssues(issues) {
+    const target = $("validation-issues");
+    if (!target) return;
+    target.replaceChildren();
+    state.validationIssues = issues || [];
+    if (!state.validationIssues.length) return;
+    state.validationIssues.forEach((issue) => {
+      const item = document.createElement("div");
+      item.className = `validation-issue validation-${issue.severity || "warning"}`;
+      item.textContent = `${String(issue.severity || "warning").toUpperCase()} · ${issue.field}: ${issue.message}`;
+      target.append(item);
+    });
+  }
+
   function renderProvenance(result) {
     const target = $("provenance");
     if (!target) return;
@@ -646,6 +671,8 @@
       buyer_address: $("buyer_address").value.trim() || null,
       buyer_tax_id: $("buyer_tax_id").value.trim() || null,
       currency: $("currency").value.trim() || null,
+      tax_rate: $("tax_rate").value === "" ? null : Number($("tax_rate").value),
+      tax_included: $("tax_included").value === "" ? null : $("tax_included").value === "true",
       timestamp: $("timestamp").value || null,
       subtotal: Number($("subtotal").value || 0), tax: Number($("tax").value || 0), discount: Number($("discount").value || 0), total_cost: Number($("total_cost").value || 0),
       items: state.items.map((item) => ({ name: String(item.name || ""), quantity: Number(item.quantity || 0), unit_price: Number(item.unit_price || 0), amount: Number(item.amount || 0), confidence: Number(item.confidence || 0), bbox: item.bbox || null })),
@@ -657,6 +684,11 @@
       processed_image_url: state.response ? state.response.processed_image_url : null,
       binary_image_url: state.response ? state.response.binary_image_url : null,
       original_filename: state.response ? state.response.original_filename : null,
+      file_hash: state.response ? state.response.file_hash : null,
+      validation_override: Boolean($("validation-override")?.checked),
+      validation_override_reason: $("validation-override-reason")?.value.trim() || null,
+      duplicate_override: Boolean($("duplicate-override")?.checked),
+      duplicate_override_reason: $("duplicate-override-reason")?.value.trim() || null,
       original_prediction: state.response ? (state.response.original_prediction || {
         captured_at: new Date().toISOString(),
         data: state.response.invoice || {},
@@ -681,6 +713,8 @@
       state.invoiceId = result.id;
       state.response = { ...(state.response || {}), ...result, invoice: result, field_details: (result.raw_json || {}).field_details || state.fieldDetails };
       state.fieldDetails = state.response.field_details || {};
+      state.validationIssues = result.validation_issues || [];
+      renderValidationIssues(state.validationIssues);
       updateReviewStatus(result.status, result.confidence);
       renderFieldReview();
       renderReviewHistory(result.correction_history || []);
@@ -702,7 +736,12 @@
     try {
       const result = await api(`/api/invoices/${state.invoiceId}/review`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, note: note.trim() || null }),
+        body: JSON.stringify({
+          status,
+          note: note.trim() || null,
+          validation_override: Boolean($("validation-override")?.checked),
+          validation_override_reason: $("validation-override-reason")?.value.trim() || null,
+        }),
       });
       updateReviewStatus(result.status, result.confidence);
       state.response = { ...(state.response || {}), ...result, invoice: result };
@@ -734,6 +773,8 @@
     state.boxes = [];
     state.fieldDetails = {};
     state.activeField = null;
+    state.validationIssues = [];
+    state.validationOverride = false;
     state.selectedBox = -1;
     state.zoom = 1;
     state.panX = 0;
@@ -742,6 +783,7 @@
     renderItems();
     renderOCRList();
     renderReviewHistory([]);
+    renderValidationIssues([]);
     updateConfidence(0);
     renderWarnings([]);
     renderProvenance({});
@@ -787,6 +829,8 @@
         processed_image_url: row.processed_image_url,
         binary_image_url: row.binary_image_url,
         original_prediction: row.original_prediction || {},
+        file_hash: row.file_hash,
+        validation_issues: row.validation_issues || [],
         correction_history: row.correction_history || [],
         sources: (row.raw_json || {}).sources || {},
         conflicts: (row.raw_json || {}).conflicts || [],
@@ -799,6 +843,7 @@
       fillForm(row, row.status);
       updateReviewStatus(row.status, row.confidence);
       renderWarnings([]);
+      renderValidationIssues(row.validation_issues || []);
       renderProvenance({
         vlm_triggered: (row.raw_json || {}).vlm_triggered,
         fallback_reasons: (row.raw_json || {}).fallback_reasons || [],

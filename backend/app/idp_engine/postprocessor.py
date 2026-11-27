@@ -6,7 +6,7 @@ import re
 import unicodedata
 from typing import Any
 
-from ..schemas.invoice import InvoiceData, MathCheck
+from ..schemas.invoice import InvoiceData, MathCheck, ValidationIssue
 
 
 # Currency markers by script family. Dot-decimal currencies ("RM", "$", "USD")
@@ -46,6 +46,15 @@ class ValidationResult:
     confidence: float
     warnings: list[str]
     math: MathCheck
+    issues: list[ValidationIssue]
+
+    @property
+    def critical_errors(self) -> list[ValidationIssue]:
+        return [issue for issue in self.issues if issue.severity == "critical"]
+
+    @property
+    def errors(self) -> list[ValidationIssue]:
+        return [issue for issue in self.issues if issue.severity in {"error", "critical"}]
 
 
 def normalize_text(value: str) -> str:
@@ -194,46 +203,133 @@ def validate_invoice(
     threshold: float = 0.85,
     tolerance_ratio: float = 0.01,
 ) -> ValidationResult:
+    """Validate invoice arithmetic and identity fields without treating zero as missing.
+
+    Presence is taken from ``field_presence`` when extraction supplied it; for
+    legacy callers, non-zero values and non-empty strings retain the previous
+    behavior. Every problem has a stable code, field and severity so the API
+    and review UI can revalidate after edits.
+    """
     warnings: list[str] = []
-    # Individual item amounts are the ground truth of the goods grid; the
-    # reported "tổng phụ"/subtotal block is frequently misread by OCR (a
-    # single dropped/merged column corrupts it). Derived subtotals also keep
-    # the math check meaningful for receipts without a subtotal line.
-    items_sum = round(sum(item.amount if item.amount else item.quantity * item.unit_price for item in data.items), 2)
-    line_sum = items_sum if data.items else float(data.subtotal)
-    subtotal = items_sum if data.items else float(data.subtotal)
-    if items_sum and data.subtotal and abs(items_sum - data.subtotal) > max(1.0, items_sum * 0.01):
-        warnings.append(
-            f"Tạm tính ghi trên hóa đơn ({data.subtotal:.0f}) lệch với tổng dòng hàng ({items_sum:.0f}); dùng tổng dòng hàng."
-        )
-    expected = round(subtotal + data.tax - data.discount, 2)
-    # Cash rounding ("Rounding (RM): 0.01", "Rounding Adjustment: 0.00") moves
-    # the printed total away from the exact arithmetic sum; accept a small
-    # rounding gap on top of the percentage tolerance.
-    rounding_gap = min(abs(float(data.total_cost)), 0.05) if data.currency and data.currency != "VND" else 0.0
-    tolerance = max(1.0, abs(data.total_cost) * tolerance_ratio) + rounding_gap
-    passed = data.total_cost > 0 and abs(expected - data.total_cost) <= tolerance
-    failed_check = data.total_cost > 0 and (data.items or data.subtotal > 0) and not passed
-    if failed_check:
-        warnings.append(
-            f"Tổng không khớp: hàng hóa + thuế - giảm giá = {expected:.2f}, hóa đơn ghi {data.total_cost:.2f}."
-        )
-    elif data.total_cost <= 0:
-        warnings.append("Chưa rút trích được tổng thanh toán.")
+    issues: list[ValidationIssue] = []
+
+    def present(field: str, value: Any) -> bool:
+        if value is None or value == "":
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, datetime):
+            return True
+        if field in data.field_presence:
+            return bool(data.field_presence[field])
+        return float(value) != 0.0
+
+    def add(field: str, code: str, message: str, severity: str = "warning", value: Any = None, expected: Any = None) -> None:
+        issue = ValidationIssue(field=field, code=code, message=message, severity=severity, value=value, expected=expected)
+        issues.append(issue)
+        warnings.append(message)
+
+    for field, label in (("timestamp", "ngày hóa đơn"), ("seller", "tên đơn vị bán"), ("total_cost", "tổng thanh toán")):
+        if not present(field, getattr(data, field)):
+            severity = "critical" if field == "total_cost" else "warning"
+            add(field, "missing_required", f"Chưa xác định được {label}.", severity)
+    if data.timestamp and data.timestamp.replace(tzinfo=None) > datetime.now():
+        add("timestamp", "future_date", "Ngày hóa đơn nằm trong tương lai.", "error", data.timestamp.isoformat())
+
+    def valid_tax_id(value: str | None) -> bool:
+        if not value:
+            return True
+        compact = re.sub(r"[ .-]", "", value.upper())
+        return bool(re.fullmatch(r"[0-9]{8,14}(-[0-9]{1,3})?", compact) or re.fullmatch(r"[0-9]{6,12}[A-Z][A-Z0-9-]{0,8}", compact))
+
+    for field in ("tax_id", "buyer_tax_id"):
+        value = getattr(data, field)
+        if value and not valid_tax_id(value):
+            add(field, "invalid_tax_id", f"Mã số thuế ở trường {field} không đúng định dạng.", "error", value)
+
+    item_sum = 0.0
+    for index, item in enumerate(data.items, 1):
+        quantity_present = item.field_presence.get("quantity", item.quantity != 0)
+        price_present = item.field_presence.get("unit_price", item.unit_price != 0)
+        amount_present = item.field_presence.get("amount", item.amount != 0)
+        if quantity_present and item.quantity < 0:
+            add(f"items[{index}].quantity", "negative_quantity", f"Dòng {index} có số lượng âm.", "critical", item.quantity)
+        if price_present and item.unit_price < 0:
+            add(f"items[{index}].unit_price", "negative_unit_price", f"Dòng {index} có đơn giá âm.", "critical", item.unit_price)
+        if amount_present and item.amount < 0:
+            add(f"items[{index}].amount", "negative_amount", f"Dòng {index} có thành tiền âm.", "critical", item.amount)
+        if quantity_present and price_present:
+            expected_amount = round(item.quantity * item.unit_price, 2)
+            actual_amount = item.amount if amount_present else expected_amount
+            item_tolerance = max(0.01, abs(expected_amount) * tolerance_ratio)
+            if amount_present and abs(actual_amount - expected_amount) > item_tolerance:
+                add(
+                    f"items[{index}].amount", "line_math_mismatch",
+                    f"Dòng {index}: số lượng × đơn giá = {expected_amount:.2f}, nhưng thành tiền là {actual_amount:.2f}.",
+                    "error", actual_amount, expected_amount,
+                )
+            item_sum += actual_amount
+        elif amount_present:
+            item_sum += item.amount
+        elif quantity_present or price_present:
+            add(f"items[{index}]", "incomplete_line", f"Dòng {index} thiếu số lượng hoặc đơn giá để kiểm tra.", "warning")
+
+    item_sum = round(item_sum, 2)
+    has_items = bool(data.items)
+    subtotal_present = present("subtotal", data.subtotal)
+    tax_present = present("tax", data.tax)
+    discount_present = present("discount", data.discount)
+    total_present = present("total_cost", data.total_cost)
+    subtotal = item_sum if has_items else (data.subtotal if subtotal_present else 0.0)
+    if has_items and subtotal_present and abs(item_sum - data.subtotal) > max(0.01, abs(item_sum) * tolerance_ratio):
+        add("subtotal", "subtotal_mismatch", f"Tạm tính {data.subtotal:.2f} lệch tổng dòng hàng {item_sum:.2f}; dùng tổng dòng hàng để kiểm tra tổng.", "warning", data.subtotal, item_sum)
+    if not subtotal_present and not has_items:
+        add("subtotal", "missing_subtotal", "Thiếu tạm tính và không có dòng hàng để suy ra.", "error")
+
+    if data.discount_rate is not None and subtotal > 0:
+        rate_discount = round(subtotal * data.discount_rate / 100, 2)
+        if discount_present and abs(data.discount - rate_discount) > max(0.02, abs(rate_discount) * 0.02):
+            add("discount", "discount_rate_mismatch", f"Giảm giá {data.discount:.2f} không khớp tỷ lệ {data.discount_rate:g}% (dự kiến {rate_discount:.2f}).", "error", data.discount, rate_discount)
+    if data.tax_included and data.tax_rate is not None and subtotal > 0 and tax_present:
+        tax_from_inclusive = round(subtotal - subtotal / (1 + data.tax_rate / 100), 2)
+        if abs(data.tax - tax_from_inclusive) > max(0.02, abs(tax_from_inclusive) * 0.02):
+            add("tax", "tax_inclusive_mismatch", f"Tiền thuế không khớp cách tính giá đã gồm thuế (dự kiến {tax_from_inclusive:.2f}).", "error", data.tax, tax_from_inclusive)
+    if data.tax < 0:
+        add("tax", "negative_tax", "Tiền thuế không được âm.", "critical", data.tax)
+    if data.discount < 0:
+        add("discount", "negative_discount", "Giảm giá không được âm.", "critical", data.discount)
+    if subtotal > 0 and data.discount > subtotal:
+        add("discount", "discount_exceeds_subtotal", "Giảm giá lớn hơn tạm tính.", "error", data.discount, subtotal)
+
+    rounding = data.rounding if present("rounding", data.rounding) else 0.0
+    tax_component = 0.0 if data.tax_included else (data.tax if tax_present else 0.0)
+    expected = round(subtotal + tax_component - (data.discount if discount_present else 0.0) + rounding, 2)
+    if total_present:
+        currency = (data.currency or "").upper()
+        tolerance = max(0.01 if currency in {"VND", "JPY", "KRW"} else 0.02, abs(data.total_cost) * tolerance_ratio)
+        if currency not in {"VND", "JPY", "KRW"}:
+            tolerance = max(tolerance, 0.05 + abs(rounding))
+        passed = abs(expected - data.total_cost) <= tolerance
+        if not passed:
+            add("total_cost", "total_mismatch", f"Tổng không khớp: dự kiến {expected:.2f}, hóa đơn ghi {data.total_cost:.2f} (dung sai {tolerance:.2f}).", "critical", data.total_cost, expected)
+    else:
+        passed = False
+    if not total_present:
+        add("total_cost", "missing_total", "Chưa rút trích được tổng thanh toán.", "critical")
     if confidence < threshold:
-        warnings.append(f"Độ tin cậy {confidence:.2f} thấp hơn ngưỡng {threshold:.2f}.")
-    if not data.seller:
-        warnings.append("Chưa xác định được tên đơn vị bán.")
+        add("confidence", "low_confidence", f"Độ tin cậy {confidence:.2f} thấp hơn ngưỡng {threshold:.2f}.", "warning", confidence, threshold)
     if not data.items:
-        warnings.append("Chưa phát hiện được dòng hàng hóa.")
+        add("items", "missing_items", "Chưa phát hiện được dòng hàng hóa.", "warning")
+
     math = MathCheck(
-        line_sum=line_sum,
+        line_sum=item_sum if has_items else float(data.subtotal),
         tax=float(data.tax),
         discount=float(data.discount),
         expected_total=expected,
         actual_total=float(data.total_cost),
         delta=round(float(data.total_cost) - expected, 2),
-        passed=passed,
-        tolerance=round(tolerance, 2),
+        passed=bool(passed and not any(issue.severity in {"error", "critical"} for issue in issues)),
+        tolerance=round(max(abs(float(data.total_cost) - expected), 0.01), 2),
     )
-    return ValidationResult("NEEDS_REVIEW" if warnings else "VALIDATED", float(confidence), warnings, math)
+    status = "NEEDS_REVIEW" if issues else "VALIDATED"
+    return ValidationResult(status, float(confidence), warnings, math, issues)

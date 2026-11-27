@@ -1,7 +1,49 @@
 # PROGRESS — Vietnamese Invoice IDP V2
 
-> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **26/11/2026 (P5 Human-in-the-Loop)**.
+> Nhật ký tiến độ cho đồ án. Cập nhật lần cuối: **27/11/2026 (P6 Validation & DB)**.
 > Mục đích: lần sau mở lại dự án là nắm ngay được đã làm gì, sửa ở đâu, số liệu ra sao và việc gì còn lại.
+
+## 0f. Cập nhật 27/11/2026 — P6: Validation & DB
+
+**Trạng thái: HOÀN TẤT P6.** Chưa chuyển sang P7. P6 giữ nguyên pipeline OCR Paddle GPU, Spatial KIE, Hybrid/VLM và workflow Human-in-the-Loop của P4–P5; bổ sung validation tài chính, duplicate detection, revalidation sau chỉnh sửa và lớp bảo vệ DB/API. Full suite hiện **69/69 test pass**; tăng từ 66/66 trước P6.
+
+### Kết quả chính
+
+- **Validation tài chính theo từng trường**: viết lại `validate_invoice()` trong [backend/app/idp_engine/postprocessor.py](backend/app/idp_engine/postprocessor.py) để kiểm tra `số lượng × đơn giá`, thành tiền từng dòng, tổng dòng hàng, tạm tính, thuế, giảm giá, rounding và tổng cuối. Mỗi lỗi trả về `ValidationIssue` có `field`, `code`, `message`, `severity`, `value` và `expected`; các mức gồm `warning`, `error`, `critical`.
+- **Phân biệt thiếu dữ liệu và giá trị 0 hợp lệ**: thêm `field_presence` cho invoice và line item. Trường thuế bằng `0` được coi là đã đọc nếu nguồn xác nhận có trường, không bị nhầm thành thiếu dữ liệu. KIE tự ghi presence cho các trường và cột số; API tạo/sửa invoice cũng suy ra presence từ các field thực sự có trong payload.
+- **Hỗ trợ nhiều quy ước tiền và thuế**: bổ sung `discount_rate`, `tax_rate`, `tax_included`, `rounding`; áp dụng dung sai phù hợp cho VND/JPY/KRW và các loại tiền thập phân như MYR/USD/EUR/GBP/SGD. Có kiểm tra thuế theo tỷ lệ, giá đã gồm thuế, giảm giá theo tỷ lệ và rounding adjustment. Các quy tắc cũ ưu tiên tổng dòng hàng khi subtotal OCR bị sai vẫn được giữ lại.
+- **Kiểm tra ngày và mã số thuế**: phát hiện ngày hóa đơn trong tương lai và định dạng MST/VAT không hợp lệ; các lỗi được gắn field/severity để UI và API xử lý thống nhất.
+- **Revalidate sau khi người dùng sửa**: PUT invoice, endpoint `POST /api/invoices/{id}/validate` và review action đều chạy lại validation trên dữ liệu hiện tại. Nếu còn lỗi `critical`, không cho chuyển sang `VERIFIED`/`VALIDATED` trừ khi người duyệt bật override và ghi rõ lý do. Khi invoice đã duyệt bị sửa làm phát sinh lỗi nghiêm trọng, trạng thái tự quay về `NEEDS_REVIEW`.
+- **Duplicate invoice detection**: tính SHA-256 cho file upload; ngoài trùng hash, còn dò theo metadata gồm mã hóa đơn + nhà bán hoặc nhà bán + ngày + tổng tiền. `/api/extract` trả danh sách duplicate candidates; thêm `GET /api/invoices/{id}/duplicates`. Khi tạo invoice, duplicate mặc định trả `409`; cho phép bỏ qua chỉ khi có `duplicate_override_reason`, và lý do được ghi vào correction history.
+- **Model/schema và migration**: [backend/app/models/invoice.py](backend/app/models/invoice.py) thêm `discount_rate`, `tax_included`, `rounding`, `field_presence`, `file_hash`, `validation_issues`, validation/duplicate override và các reason. `InvoiceItem` thêm presence theo cột. [backend/app/database.py](backend/app/database.py) có migration SQLite additive cho toàn bộ cột mới; không rewrite database hiện tại.
+- **Transaction và CRUD**: create có kiểm tra duplicate/validation trước commit; các commit quan trọng có rollback khi lỗi; update/review vẫn giữ `original_prediction`, KIE/VLM provenance và `correction_history`. Các endpoint CRUD cũ vẫn tương thích.
+- **Export**: CSV/XLSX bổ sung currency, tax rate, discount rate, rounding, file hash và chuỗi validation errors; vẫn giữ cơ chế chống công thức độc hại trong spreadsheet export.
+- **Frontend P6**: [frontend/index.html](frontend/index.html), [frontend/app.js](frontend/app.js), [frontend/styles.css](frontend/styles.css) thêm ô thuế suất/giá đã gồm thuế, hiển thị lỗi theo severity, checkbox override validation kèm lý do, override duplicate kèm lý do, và xử lý lỗi API duplicate/validation rõ ràng. Workflow P5, bounding box, zoom/pan, field highlighting và provenance vẫn được giữ.
+
+### File và test P6
+
+- [backend/app/idp_engine/postprocessor.py](backend/app/idp_engine/postprocessor.py): validation tài chính, ngày, MST, presence và severity.
+- [backend/app/idp_engine/kie_extractor.py](backend/app/idp_engine/kie_extractor.py): gắn `field_presence` cho line items và các trường KIE.
+- [backend/app/idp_engine/pipeline.py](backend/app/idp_engine/pipeline.py), [backend/app/idp_engine/hybrid.py](backend/app/idp_engine/hybrid.py): truyền validation issues ra extraction response mà không thay đổi OCR/VLM setup.
+- [backend/app/api/routes.py](backend/app/api/routes.py): SHA-256, duplicate candidates, revalidate endpoint, review guard, override audit, transaction rollback và export fields.
+- [backend/app/schemas/invoice.py](backend/app/schemas/invoice.py), [backend/app/schemas/__init__.py](backend/app/schemas/__init__.py): schema `ValidationIssue`, duplicate match/response, validation request, tax/presence/override fields.
+- [backend/tests/test_postprocessing.py](backend/tests/test_postprocessing.py): regression cho line math, severity và explicit zero.
+- [backend/tests/test_api.py](backend/tests/test_api.py): integration cho duplicate detection, validation block, override có lý do và workflow review.
+- **Kết quả cuối**: `pytest -q` → **69 passed**, 1 warning deprecation từ `pytest-asyncio`/Starlette `httpx`, không phải lỗi của dự án.
+- `python -m compileall -q backend` → pass.
+- `git diff --check` → pass.
+
+### Hạn chế còn lại sau P6
+
+1. Các số tiền trong DB vẫn dùng `Float`; validation có dung sai và rounding nhưng hệ thống production nên chuyển sang `Decimal`/numeric type để tránh sai số nhị phân.
+2. Quy ước thuế hiện hỗ trợ VAT một mức, giá đã gồm thuế, giảm giá và rounding; chưa mô hình hóa đầy đủ nhiều dòng thuế, withholding tax, miễn thuế hoặc phí ngoài hóa đơn.
+3. Duplicate metadata là heuristic: cùng nhà bán/ngày/tổng có thể là hai hóa đơn hợp lệ, còn ảnh khác byte nhưng cùng nội dung có thể không bắt được nếu metadata OCR sai.
+4. Migration vẫn là additive SQLite lúc startup, chưa có Alembic/versioned migration hoặc unique constraint chống race condition duplicate trong môi trường nhiều worker.
+5. Chưa có user/auth identity và `reviewer_id`; override hiện ghi reason/timestamp trong history nhưng chưa gắn tài khoản người duyệt.
+6. Repo chưa có browser E2E runner; chưa có screenshot pixel-level cuối cho validation UI, bbox, zoom/pan và responsive breakpoints vì môi trường hiện tại thiếu Chromium/Playwright/Node.
+7. Các giới hạn OCR/VLM trên ảnh mờ, nghiêng, cong và benchmark Hybrid của P4 vẫn còn; P6 không thay đổi mô hình GPU hoặc local VLM.
+
+---
 
 ## 0e. Cập nhật 26/11/2026 — P5: Human-in-the-Loop
 

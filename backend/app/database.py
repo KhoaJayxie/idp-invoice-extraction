@@ -44,9 +44,23 @@ def initialize_database() -> None:
             "currency": "VARCHAR(8)",
             "invoice_series": "VARCHAR(32)",
             "invoice_form": "VARCHAR(32)",
+            "tax_rate": "FLOAT",
+            "discount_rate": "FLOAT",
+            "tax_included": "BOOLEAN",
+            "rounding": "FLOAT",
+            "field_presence": "JSON",
+            "file_hash": "VARCHAR(64)",
             "original_prediction": "JSON",
             "correction_history": "JSON",
+            "validation_issues": "JSON",
+            "validation_override": "BOOLEAN",
+            "validation_override_reason": "TEXT",
+            "duplicate_override": "BOOLEAN",
+            "duplicate_override_reason": "TEXT",
             "reviewed_at": "DATETIME",
+        },
+        "invoice_items": {
+            "field_presence": "JSON",
         },
     }
     inspector = inspect(engine)
