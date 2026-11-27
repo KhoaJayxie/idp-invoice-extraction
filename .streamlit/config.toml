@@ -1,0 +1,14 @@
+# Streamlit configuration for the P7 benchmark dashboard.
+[theme]
+base = "light"
+primaryColor = "#1d4ed8"
+backgroundColor = "#f8fafc"
+secondaryBackgroundColor = "#eef2ff"
+textColor = "#172033"
+borderColor = "#cbd5e1"
+font = "sans-serif"
+baseRadius = "0.5rem"
+showWidgetBorder = true
+paddingTop = "1.5rem"
+paddingBottom = "2rem"
+chartCategoricalColors = ["#1d4ed8", "#0f766e", "#c2410c", "#7c3aed", "#be123c"]

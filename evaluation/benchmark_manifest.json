@@ -1,0 +1,26 @@
+{
+  "dataset": "kie_ground_truth_v1",
+  "version": "p7-2026-11-27",
+  "description": "Hand-labeled Spatial KIE fixture set replayed from captured real OCR token dumps.",
+  "leakage_policy": "No model fitting uses these rows. The manifest freezes a development split and a benchmark holdout split. The historical 89.8% result used all 11 fixtures and is therefore not an independent holdout score.",
+  "historical_baseline": {
+    "name": "P3 spatial KIE historical baseline",
+    "correct": 158,
+    "total": 176,
+    "accuracy": 0.8977272727,
+    "note": "Reported before P7; same KIE fixture corpus, not a fair three-strategy benchmark."
+  },
+  "fixtures": [
+    {"id": "sroie_bookta", "category": "retail_receipt", "split": "dev", "tokens": "evaluation/fixtures/ocr_tokens/sroie_bookta.json", "truth": "evaluation/fixtures/kie_ground_truth.json#sroie_bookta"},
+    {"id": "sroie_zhenghui", "category": "retail_receipt", "split": "dev", "tokens": "evaluation/fixtures/ocr_tokens/sroie_zhenghui.json", "truth": "evaluation/fixtures/kie_ground_truth.json#sroie_zhenghui"},
+    {"id": "vn_bookstore_1", "category": "retail_receipt", "split": "dev", "tokens": "evaluation/fixtures/ocr_tokens/vn_bookstore_1.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vn_bookstore_1"},
+    {"id": "vn_bookstore_2", "category": "retail_receipt", "split": "dev", "tokens": "evaluation/fixtures/ocr_tokens/vn_bookstore_2.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vn_bookstore_2"},
+    {"id": "vat_convert_abc", "category": "vat_invoice", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/vat_convert_abc.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vat_convert_abc"},
+    {"id": "vat_blurred", "category": "challenging_blurred", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/vat_blurred.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vat_blurred"},
+    {"id": "vat_efy_template", "category": "vat_invoice", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/vat_efy_template.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vat_efy_template"},
+    {"id": "vn_resto_comnieu", "category": "restaurant_bill", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/vn_resto_comnieu.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vn_resto_comnieu"},
+    {"id": "vn_resto_gaigarden", "category": "restaurant_bill", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/vn_resto_gaigarden.json", "truth": "evaluation/fixtures/kie_ground_truth.json#vn_resto_gaigarden"},
+    {"id": "my_crosschannel", "category": "challenging_layout", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/my_crosschannel.json", "truth": "evaluation/fixtures/kie_ground_truth.json#my_crosschannel"},
+    {"id": "my_lightroom", "category": "challenging_layout", "split": "test", "tokens": "evaluation/fixtures/ocr_tokens/my_lightroom.json", "truth": "evaluation/fixtures/kie_ground_truth.json#my_lightroom"}
+  ]
+}
